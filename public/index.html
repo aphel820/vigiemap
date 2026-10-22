@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="fr" data-theme="nuit">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#16191C">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Vigie">
+    <meta name="referrer" content="no-referrer">
+    <!-- Titre d'onglet volontairement court : discret sur un téléphone, le détail est dans l'aperçu -->
+    <title>Vigie</title>
+    <meta name="description" content="Reste en sécurité pendant les manifestations : les dangers signalés en direct, l'aide des secouristes, un binôme pour veiller l'un sur l'autre. Sans compte, sans nom, sans numéro.">
+    <!-- Aperçu des liens partagés (réseaux, messageries). L'image demande une adresse complète :
+         à changer si Vigie est installée sur un autre domaine. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Vigie">
+    <meta property="og:locale" content="fr_FR">
+    <meta property="og:url" content="https://vigiemap.org/">
+    <meta property="og:title" content="Vigie : la carte des dangers en manif">
+    <meta property="og:description" content="Reste en sécurité pendant les manifestations : les dangers signalés en direct, l'aide des secouristes, un binôme pour veiller l'un sur l'autre. Sans compte, sans nom, sans numéro.">
+    <meta property="og:image" content="https://vigiemap.org/og.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Vigie : une carte avec des dangers signalés (charge, nasse, gaz, canon à eau, tirs)">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+    <link rel="stylesheet" href="app.css">
+    <!-- Tout est demandé dès la première ligne : pas d'attente en cascade sur un réseau lent -->
+    <link rel="preload" href="vendor/fonts/atkinson-700.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="modulepreload" href="js/icons.js">
+    <link rel="modulepreload" href="js/qr.js">
+    <link rel="modulepreload" href="js/pow.js">
+    <link rel="modulepreload" href="vendor/protomaps-leaflet/flavors.js">
+    <script src="vendor/leaflet/leaflet.js" defer></script>
+    <script src="vendor/protomaps-leaflet/protomaps-leaflet.js" defer></script>
+    <script src="js/app.js" type="module"></script>
+</head>
+<body>
+    <div id="map" aria-label="Carte des signalements"></div>
+
+    <!-- Viseur : le point signalé est toujours au centre de la partie visible de la carte -->
+    <svg id="viseur" class="viseur hidden" viewBox="0 0 76 76" aria-hidden="true">
+        <circle cx="38" cy="38" r="20" fill="none" stroke="currentColor" stroke-width="5"/>
+        <circle cx="38" cy="38" r="4.5" fill="currentColor"/>
+        <path d="M38 3v12M38 61v12M3 38h12M61 38h12" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+    </svg>
+
+    <header class="topbar">
+        <div id="net" class="plate plate--net" data-state="wait" role="status">
+            <span class="dot"></span><span id="netText">Connexion…</span>
+        </div>
+        <button id="windBtn" class="plate plate--wind hidden" type="button">
+            <span data-icon="wind"></span><span id="windText"></span>
+        </button>
+        <button id="menuBtn" class="plate plate--icon" type="button" aria-label="Réglages" data-icon="menu"></button>
+    </header>
+
+    <div class="stack">
+        <!-- Position : affiché seulement quand elle manque, avec ce qu'il faut faire -->
+        <button id="posChip" class="notice notice--pos hidden" type="button">
+            <span class="notice__icon" data-icon="pin"></span>
+            <span class="notice__text"><strong id="posChipTitle"></strong><span id="posChipSub"></span></span>
+        </button>
+
+        <!-- Annonce lue une seule fois par danger (le bandeau, lui, se met à jour tous les 10 m) -->
+        <p id="alertLive" class="sr" role="alert"></p>
+        <section id="alert" class="alert hidden" aria-label="Danger proche">
+            <button id="alertMain" class="alert__main" type="button">
+                <span id="alertIcon" class="alert__icon"></span>
+                <span id="alertTitle" class="alert__title"></span>
+                <span class="alert__compass"><span id="alertArrow" class="arrow"></span></span>
+                <span class="alert__where"><span id="alertDist" class="alert__dist"></span><span id="alertDir"></span></span>
+                <span id="alertMeta" class="alert__meta"></span>
+            </button>
+            <button id="alertClose" class="alert__close" type="button" aria-label="Masquer cette alerte" data-icon="close"></button>
+        </section>
+
+        <section id="helpStatus" class="notice hidden" aria-live="polite">
+            <span class="notice__icon" data-icon="plus"></span>
+            <span class="notice__text">
+                <strong id="helpStatusTitle"></strong>
+                <span id="helpStatusSub"></span>
+            </span>
+            <button id="helpDone" class="notice__btn" type="button" aria-label="Je n'ai plus besoin d'aide : fermer ma demande">Plus besoin</button>
+        </section>
+
+        <button id="medicBar" class="notice notice--medic hidden" type="button" aria-describedby="medicBarHint">
+            <span class="notice__icon" data-icon="plus"></span>
+            <span class="notice__text"><strong id="medicBarTitle"></strong></span>
+            <span id="medicBarHint" class="notice__more">Voir</span>
+        </button>
+
+        <button id="buddyAlert" class="notice notice--buddy hidden" type="button" aria-live="assertive">
+            <span class="notice__icon" data-icon="users"></span>
+            <span class="notice__text"><strong id="buddyAlertTitle"></strong><span id="buddyAlertSub"></span></span>
+            <span class="notice__more">Voir</span>
+        </button>
+    </div>
+
+    <div class="side">
+        <div class="zoom">
+            <button id="zoomIn" type="button" aria-label="Zoomer" data-icon="plus"></button>
+            <button id="zoomOut" type="button" aria-label="Dézoomer" data-icon="minus"></button>
+        </div>
+        <button id="locateBtn" class="round" type="button" aria-label="Revenir sur ma position" data-icon="locate"></button>
+    </div>
+
+    <div class="chips">
+        <button id="gasBtn" class="chip" type="button"><span data-icon="gaze"></span>Gazé·e ?</button>
+        <button id="buddyBtn" class="chip" type="button"><span data-icon="users"></span>Binôme</button>
+    </div>
+
+    <nav class="dock" aria-label="Actions">
+        <button id="reportBtn" class="dock__btn dock__btn--danger" type="button"><span data-icon="warn"></span>Signaler</button>
+        <button id="helpBtn" class="dock__btn dock__btn--help" type="button"><span data-icon="plus"></span>Secours</button>
+    </nav>
+
+    <div id="scrim" class="scrim hidden"></div>
+
+    <!-- Signaler un danger : la carte reste manipulable pour viser -->
+    <section id="sheetReport" class="sheet sheet--map hidden" role="dialog" tabindex="-1" aria-labelledby="sheetReportTitle">
+        <div class="sheet__head">
+            <div>
+                <h2 id="sheetReportTitle" class="sheet__title">Signaler un danger</h2>
+                <p class="sheet__sub">Vise l'endroit, puis choisis.</p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+        <div id="reportGrid" class="grid"></div>
+        <div id="reportMore" class="grid grid--mini"></div>
+    </section>
+
+    <!-- Demander de l'aide : ne part qu'aux medics -->
+    <section id="sheetHelp" class="sheet sheet--map hidden" role="dialog" tabindex="-1" aria-labelledby="sheetHelpTitle">
+        <div class="sheet__head">
+            <div>
+                <h2 id="sheetHelpTitle" class="sheet__title">Demander un medic</h2>
+                <p class="sheet__sub"><span data-icon="lock"></span>Des secouristes bénévoles, s'il y en a autour : eux seuls voient ta demande.</p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+        <div id="helpGrid" class="grid"></div>
+        <a class="btn btn--urgence" href="tel:112"><span data-icon="phone"></span>Urgence vitale : le 112</a>
+    </section>
+
+    <!-- Détail d'un signalement ou d'une demande -->
+    <section id="sheetDetail" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="detailTitle">
+        <div class="sheet__head">
+            <span id="detailPlate" class="detail__plate"></span>
+            <div>
+                <h2 id="detailTitle" class="sheet__title"></h2>
+                <p id="detailSub" class="sheet__sub"></p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+        <p id="detailState" class="detail__state"></p>
+        <div id="detailActions" class="actions"></div>
+    </section>
+
+    <!-- Réglages -->
+    <section id="sheetMenu" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="menuTitle">
+        <div class="sheet__head">
+            <div><h2 id="menuTitle" class="sheet__title">Réglages</h2></div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+
+        <div class="row">
+            <div>
+                <span class="row__label">Affichage</span>
+                <span class="row__hint">Nuit économise la batterie sur beaucoup de téléphones.</span>
+            </div>
+            <div id="themeSeg" class="seg" role="group" aria-label="Affichage">
+                <button type="button" data-theme-choice="auto">Auto</button>
+                <button type="button" data-theme-choice="nuit">Nuit</button>
+                <button type="button" data-theme-choice="soleil">Soleil</button>
+            </div>
+        </div>
+
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Alertes</span>
+                <span class="row__hint">« Toutes » : le téléphone prévient pour tout danger proche. « Fiables » : seulement pour ceux qu'une personne de ta cellule a confirmés (des gens que tu as fait entrer toi-même). Des inconnus peuvent poster de faux dangers, même en nombre ; ta cellule, non. La carte, elle, montre toujours tout.</span>
+                <span id="alertNote" class="row__hint row__hint--warn hidden"></span>
+            </div>
+            <div id="alertSeg" class="seg" role="group" aria-label="Alertes">
+                <button type="button" data-alert-choice="toutes">Toutes</button>
+                <button type="button" data-alert-choice="fiables">Fiables</button>
+            </div>
+        </div>
+
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Carte sans réseau</span>
+                <span id="zoneHint" class="row__hint">Le jour même ou la veille : zoome sur le lieu de la manif, puis télécharge un carré de 3 km centré sur la carte.</span>
+                <span class="row__hint row__hint--warn ios-first hidden">Sur iPhone, installe d'abord Vigie, puis prépare la zone depuis son icône : l'appli installée ne voit pas la carte gardée par Safari.</span>
+            </div>
+            <button id="zoneBtn" class="btn btn--ghost" type="button"><span data-icon="download"></span>Préparer la zone</button>
+        </div>
+
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Installer Vigie</span>
+                <span id="installHint" class="row__hint">Sur l'écran d'accueil, elle s'ouvre d'un geste, en plein écran, et marche mieux sans réseau. Rien à télécharger dans un store.</span>
+            </div>
+            <button id="installBtn" class="btn btn--ghost" type="button"><span data-icon="ajout"></span>Comment l'installer</button>
+        </div>
+
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Mode medic</span>
+                <span id="medicHint" class="row__hint">Pour les street medics : affiche les demandes d'aide.</span>
+            </div>
+            <form id="medicForm" class="inline">
+                <input id="medicInput" class="input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Code medic" aria-label="Code medic">
+                <button class="btn btn--aide" type="submit">Activer</button>
+            </form>
+            <button id="medicOff" class="btn btn--ghost hidden" type="button">Quitter le mode medic</button>
+        </div>
+
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Cellule de confiance</span>
+                <span id="cellRowHint" class="row__hint">Ton groupe de gens de confiance : tu vois ce que ses membres ont confirmé.</span>
+            </div>
+            <button id="cellBtn" class="btn btn--ghost" type="button"><span data-icon="shield"></span><span id="cellBtnLabel">Rejoindre une cellule</span></button>
+        </div>
+
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Transparence</span>
+                <span class="row__hint">Vérifie toi-même ce que ton téléphone envoie, et ce que le serveur garde.</span>
+            </div>
+            <button id="transpBtn" class="btn btn--ghost" type="button"><span data-icon="eye"></span>Voir ce qui part</button>
+        </div>
+
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Faire connaître Vigie</span>
+                <span class="row__hint">Envoie le lien par l'appli de ton choix, ou montre le QR autour de toi. Vigie ne passe par aucun réseau social.</span>
+            </div>
+            <div class="actions">
+                <button id="shareBtn" class="btn btn--ghost" type="button"><span data-icon="envoi"></span>Partager le lien</button>
+                <button id="shareQrBtn" class="btn btn--ghost" type="button"><span data-icon="qr"></span>Montrer le QR</button>
+            </div>
+        </div>
+
+        <div class="row">
+            <button id="rulesBtn" class="link" type="button">Revoir les règles</button>
+        </div>
+
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Tout effacer de ce téléphone</span>
+                <span class="row__hint">Signalements, carte enregistrée, cellule, binôme, réglages. Ta demande d'aide en cours est retirée chez les medics.</span>
+            </div>
+            <button id="wipeBtn" class="btn btn--hold hold" type="button" data-hold="1500"><span>Maintenir pour tout effacer</span></button>
+        </div>
+
+        <p class="foot">Sans réseau, Vigie affiche la carte préparée et les derniers dangers reçus, mais n'en reçoit plus de nouveaux : rien ne passe directement d'un téléphone à l'autre.</p>
+    </section>
+
+    <!-- Cellule de confiance : créer, rejoindre, partager -->
+    <section id="sheetCell" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="cellTitle">
+        <div class="sheet__head">
+            <button id="cellBack" class="sheet__close hidden" type="button" aria-label="Retour" data-icon="back"></button>
+            <div>
+                <h2 id="cellTitle" class="sheet__title">Cellule de confiance</h2>
+                <p id="cellSub" class="sheet__sub"></p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+
+        <!-- Accueil -->
+        <div id="cellHome" class="cellview">
+            <div id="cellNone">
+                <p class="cell__lead">Une cellule, c'est ton groupe de gens de confiance. Quand l'un d'eux confirme un danger, tu le vois marqué « vu par ta cellule ». Rejoins celle d'une personne que tu connais en scannant son QR, ou crée la tienne. Un faux compte n'y entre pas sans qu'on le fasse scanner.</p>
+                <p class="row__hint row__hint--warn ios-first hidden">Sur iPhone, installe d'abord Vigie sur l'écran d'accueil, puis rejoins ou crée ta cellule depuis son icône : l'appli installée ne voit rien de ce qui est fait dans Safari.</p>
+                <div class="actions">
+                    <button id="cellJoinBtn" class="btn btn--primary" type="button"><span data-icon="camera"></span>Rejoindre une cellule</button>
+                    <button id="cellCreateBtn" class="btn btn--ghost" type="button"><span data-icon="plus"></span>Créer ma cellule</button>
+                </div>
+            </div>
+            <div id="cellMember" class="hidden">
+                <p id="cellState" class="detail__state is-ok">Tu fais partie d'une cellule.</p>
+                <div class="actions">
+                    <button id="cellShareBtn" class="btn btn--primary" type="button"><span data-icon="qr"></span>Partager ma cellule</button>
+                    <button id="cellLeaveBtn" class="btn btn--ghost" type="button">Quitter la cellule</button>
+                </div>
+                <p class="foot">Ne la fais scanner qu'à des gens que tu connais : elle vaut la confiance de chacun de ses membres. Le serveur ne connaît pas les cellules, il relaie seulement des marques que seuls les membres savent lire. Seule exception : un code court lui confie la clé de la cellule pendant <span data-cfg="pairTtlH">12</span> h.</p>
+            </div>
+        </div>
+
+        <!-- Rejoindre -->
+        <div id="cellJoin" class="cellview hidden">
+            <div id="cellScan" class="cell__scan hidden">
+                <video id="cellVideo" class="cell__video" playsinline muted></video>
+                <div class="cell__scanframe" aria-hidden="true"></div>
+            </div>
+            <p id="cellScanHint" class="cell__lead"></p>
+            <form id="cellCodeForm" class="cell__codeform">
+                <label class="row__label" for="cellCodeInput">Ou tape le code (court ou long)</label>
+                <div class="inline">
+                    <input id="cellCodeInput" class="input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="code court, ou XXXX-XXXX-…" aria-label="Code de la cellule">
+                    <button class="btn btn--primary" type="submit">Rejoindre</button>
+                </div>
+                <p id="cellJoinMsg" class="row__hint"></p>
+            </form>
+        </div>
+
+        <!-- Partager -->
+        <div id="cellShare" class="cellview hidden">
+            <p class="cell__lead">Montre ce QR à la personne à faire entrer, ou dicte-lui le code. Ça marche sans réseau.</p>
+            <div class="cell__qrwrap"><canvas id="cellQr" class="cell__qr" width="320" height="320"></canvas></div>
+            <p id="cellCodeText" class="cell__code"></p>
+            <button id="cellCopyBtn" class="btn btn--ghost" type="button"><span data-icon="copy"></span>Copier le code</button>
+            <div class="cell__pin">
+                <button id="cellPinBtn" class="btn btn--primary" type="button">Plutôt un code court à taper</button>
+                <p id="cellPinOut" class="cell__pinout hidden" aria-live="polite"></p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Faire connaître Vigie : le QR de l'adresse, à faire scanner autour de soi -->
+    <section id="sheetShare" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="shareTitle">
+        <div class="sheet__head">
+            <div>
+                <h2 id="shareTitle" class="sheet__title">Faire connaître Vigie</h2>
+                <p class="sheet__sub">Fais scanner ce QR : il ouvre Vigie, rien d'autre.</p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+        <div class="cellview">
+            <div class="cell__qrwrap"><canvas id="shareQr" class="cell__qr" width="320" height="320"></canvas></div>
+            <p id="shareUrl" class="cell__code"></p>
+            <button id="shareCopyBtn" class="btn btn--ghost" type="button"><span data-icon="copy"></span>Copier le lien</button>
+            <p class="foot">Le QR et le lien ne contiennent que l'adresse de Vigie : ni ton identité, ni ta cellule, ni ta position.</p>
+        </div>
+    </section>
+
+    <!-- Transparence : ce que le téléphone envoie (journal local), ce que le serveur garde -->
+    <section id="sheetTransp" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="transpTitle">
+        <div class="sheet__head">
+            <div>
+                <h2 id="transpTitle" class="sheet__title">Transparence</h2>
+                <p class="sheet__sub">Ce que ton téléphone envoie, et ce que le serveur garde.</p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+
+        <div class="transp">
+            <h3 class="row__label">Jamais envoyé</h3>
+            <p class="row__hint">Ton nom, ton numéro, ton email, et ta position GPS exacte. Un signalement ou une demande d'aide part avec le point visé, arrondi à 50 m sur ton téléphone : par défaut, ce point est là où tu es. L'alarme « interpellé·e » du binôme envoie aussi ta position arrondie, chiffrée pour ton binôme seulement.</p>
+
+            <h3 class="row__label">Ce que le serveur garde, et combien de temps</h3>
+            <ul class="transp__list">
+                <li>Un danger : son type, son point arrondi, des empreintes de vote différentes pour chaque danger, et des marques de cellule qu'il ne sait pas lire. Effacé <span data-cfg="reportTtlMin">25</span> min après la dernière confirmation.</li>
+                <li>Une demande d'aide : son type et son point arrondi, visibles des seuls medics. Effacée quand tu la fermes, ou au bout de <span data-cfg="helpTtlMin">45</span> min.</li>
+                <li>Le binôme : des messages chiffrés qu'il ne peut pas lire. Effacés après <span data-cfg="buddyTtlMin">90</span> min sans nouvelles.</li>
+                <li>Un code court de cellule : la clé de la cellule, <span data-cfg="pairTtlH">12</span> h, seulement si tu en crées un. Pendant ce temps, toute personne qui a le code peut entrer dans la cellule.</li>
+                <li>Où tu es, à peu près : la carte s'ouvre sur toi, donc les morceaux de carte demandés montrent la zone affichée (environ 1 à 2 km), et la connexion temps réel suit les secteurs d'environ 50 km autour de ta position. Le serveur n'en note rien ; sa mémoire garde seulement, pour aller vite, les grandes régions de carte lues récemment.</li>
+                <li>Tout est en mémoire : aucun journal des requêtes, aucune adresse IP, et un redémarrage efface tout.</li>
+                <li>Le vent : le serveur demande la météo du centre de ton secteur (environ 50 km) au service Open-Meteo, au plus toutes les <span data-cfg="windRefreshMin">10</span> minutes. Open-Meteo voit le serveur Vigie, jamais ton téléphone.</li>
+            </ul>
+
+            <h3 class="row__label">Ce que voit le réseau</h3>
+            <p class="row__hint">Ton opérateur mobile, et l'hébergeur du serveur, voient qu'un téléphone se connecte à Vigie et à quelle heure. Pas ce qu'il envoie : c'est chiffré. Pour cacher jusqu'à cela, active un VPN de confiance avant d'ouvrir Vigie.</p>
+
+            <h3 class="row__label">Ce que garde ton téléphone</h3>
+            <p class="row__hint">Ta cellule et ton binôme (leurs clés, ton prénom de binôme), le code medic s'il est activé, ta demande d'aide en cours et son type, tes signalements récents et ceux en attente de réseau, les derniers dangers reçus (effacés dès l'ouverture suivante une fois périmés), et les morceaux de carte du jour et de la veille (les plus anciens s'effacent à l'ouverture suivante de Vigie). « Tout effacer » vide tout cela et retire ta demande d'aide en cours. Il ne retire pas un code court déjà créé ni ton dernier message de binôme (ils s'effacent seuls, en <span data-cfg="pairTtlH">12</span> h et <span data-cfg="buddyTtlMin">90</span> min), ni l'historique de ton navigateur, ni ce que tu as copié ou pris en capture d'écran.</p>
+
+            <h3 class="row__label">Ce que ton téléphone a envoyé</h3>
+            <p class="row__hint">Les 60 derniers envois depuis l'ouverture de l'appli ; les morceaux de carte sont seulement comptés. Ce journal reste sur ton téléphone et s'efface à la fermeture.</p>
+            <p id="transpTiles" class="row__hint"></p>
+            <p id="transpEmpty" class="row__hint">Rien pour l'instant.</p>
+            <ol id="transpLog" class="transp__log"></ol>
+
+            <p class="foot">Personne ne peut prouver à distance ce que fait un serveur. Ce que tu peux vérifier, c'est ce que ton téléphone envoie : ici, ou avec les outils de développement de ton navigateur. <span id="srcLater">Et le code de Vigie sera publié sous licence libre (AGPL) : chacun pourra alors lire ce que fait le serveur.</span><span id="srcNow" class="hidden">Et le code de Vigie est publié sous licence libre (AGPL) : <a id="srcLink" href="#" target="_blank" rel="noopener noreferrer">lire le code</a>. Chacun peut y vérifier ce que fait le serveur.</span></p>
+        </div>
+    </section>
+
+    <!-- Installer sur l'écran d'accueil : les étapes dessinées, iPhone ou Android -->
+    <section id="sheetInstall" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="installTitle">
+        <div class="sheet__head">
+            <div>
+                <h2 id="installTitle" class="sheet__title">Installer Vigie</h2>
+                <p class="sheet__sub">Sur l'écran d'accueil, comme une appli. Sans store, sans compte.</p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+
+        <button id="installNow" class="btn btn--primary hidden" type="button"><span data-icon="download"></span>Installer maintenant</button>
+
+        <div id="installSeg" class="seg howto__seg" role="group" aria-label="Ton téléphone">
+            <button type="button" data-os="ios">iPhone</button>
+            <button type="button" data-os="android">Android</button>
+        </div>
+
+        <ol id="installIos" class="howto">
+            <li>
+                <span class="howto__text"><strong>Touche « Partager »</strong>Le carré avec une flèche vers le haut, dans la barre de Safari. S'il n'y est pas, il est dans le menu « ••• ».</span>
+                <span class="mock" aria-hidden="true"><span class="mock__dim"></span><span class="mock__on" data-icon="partage"></span><span class="mock__dim"></span></span>
+            </li>
+            <li>
+                <span class="howto__text"><strong>Choisis « Sur l'écran d'accueil »</strong>Fais défiler la liste si besoin : l'option est parmi les actions, sous les applis.</span>
+                <span class="mock" aria-hidden="true"><span class="mock__item"><span data-icon="ajout"></span>Sur l'écran d'accueil</span></span>
+            </li>
+            <li>
+                <span class="howto__text"><strong>Touche « Ajouter »</strong>En haut à droite. Vigie arrive sur ton écran d'accueil.</span>
+                <span class="mock" aria-hidden="true"><span class="mock__app" data-icon="eye"></span><strong>Vigie</strong><span class="mock__btn">Ajouter</span></span>
+            </li>
+        </ol>
+
+        <ol id="installAndroid" class="howto hidden">
+            <li>
+                <span class="howto__text"><strong>Touche le menu « ⋮ »</strong>En haut à droite de Chrome.</span>
+                <span class="mock" aria-hidden="true"><span class="mock__dim"></span><span class="mock__on" data-icon="points"></span></span>
+            </li>
+            <li>
+                <span class="howto__text"><strong>Choisis « Installer l'application »</strong>Ou « Ajouter à l'écran d'accueil », selon la version. Sur Samsung Internet : menu « ≡ », puis « Ajouter page à », « Écran d'accueil ».</span>
+                <span class="mock" aria-hidden="true"><span class="mock__item"><span data-icon="download"></span>Installer l'application</span></span>
+            </li>
+            <li>
+                <span class="howto__text"><strong>Touche « Installer »</strong>Vigie arrive sur ton écran d'accueil.</span>
+                <span class="mock" aria-hidden="true"><span class="mock__app" data-icon="eye"></span><strong>Vigie</strong><span class="mock__btn">Installer</span></span>
+            </li>
+            <li><span class="howto__text">Bon à savoir : avec Chrome, l'installation passe par un service de Google, qui apprend ainsi que ce téléphone a installé Vigie. Pour l'éviter, utilise Firefox, ou Vigie sans l'installer.</span></li>
+        </ol>
+
+        <p class="foot">Ensuite, ouvre Vigie une fois avec du réseau avant de partir, et prépare la zone (Réglages, « Carte sans réseau ») : la carte s'affichera même si le réseau sature.</p>
+    </section>
+
+    <!-- Binôme : créer / rejoindre un groupe chiffré, signe de vie, alarme interpellation -->
+    <section id="sheetBuddy" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="buddyTitle">
+        <div class="sheet__head">
+            <button id="buddyBack" class="sheet__close hidden" type="button" aria-label="Retour" data-icon="back"></button>
+            <div>
+                <h2 id="buddyTitle" class="sheet__title">Binôme</h2>
+                <p id="buddySub" class="sheet__sub"></p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+
+        <!-- Accueil -->
+        <div id="buddyHome" class="cellview">
+            <div id="buddyNone">
+                <p class="cell__lead">Tes proches voient si tu es interpellé·e ou si tu ne donnes plus signe de vie, quand ils ouvrent Vigie. Tout est chiffré entre vous : le serveur ne lit ni les prénoms, ni les statuts, ni les positions ; il voit seulement combien vous êtes et quand chacun donne signe.</p>
+                <p class="row__hint row__hint--warn ios-first hidden">Sur iPhone, installe d'abord Vigie sur l'écran d'accueil, puis crée ou rejoins ton binôme depuis son icône : l'appli installée ne voit rien de ce qui est fait dans Safari.</p>
+                <div class="actions">
+                    <button id="buddyCreateBtn" class="btn btn--primary" type="button"><span data-icon="users"></span>Créer un binôme</button>
+                    <button id="buddyJoinBtn" class="btn btn--ghost" type="button"><span data-icon="camera"></span>Rejoindre un binôme</button>
+                </div>
+            </div>
+            <div id="buddyMember" class="hidden">
+                <label class="row__label" for="buddyNameInput">Ton prénom (vu par ton binôme)</label>
+                <input id="buddyNameInput" class="input" type="text" autocomplete="off" maxlength="24" placeholder="Ex. Sam" aria-label="Ton prénom">
+                <ul id="buddyList" class="buddylist"></ul>
+                <div class="actions">
+                    <button id="aliveBtn" class="btn btn--primary" type="button"><span data-icon="check"></span>Je vais bien</button>
+                    <button id="arrestBtn" class="btn btn--hold hold" type="button" data-hold="2000"><span>Maintenir 2 s : je suis interpellé·e</span></button>
+                </div>
+                <div class="actions">
+                    <button id="buddyShareBtn" class="btn btn--ghost" type="button"><span data-icon="qr"></span>Ajouter quelqu'un</button>
+                    <button id="buddyLeaveBtn" class="link" type="button">Quitter le binôme</button>
+                </div>
+                <p class="foot">Rien ne part ni n'arrive quand l'appli est fermée : une alarme de tes proches s'affiche quand tu ouvres Vigie. Pense à « Je vais bien » avant de ranger ton téléphone. L'alarme « interpellé·e » envoie ta position arrondie à 50 m.</p>
+            </div>
+        </div>
+
+        <!-- Rejoindre -->
+        <div id="buddyJoin" class="cellview hidden">
+            <div id="buddyScan" class="cell__scan hidden">
+                <video id="buddyVideo" class="cell__video" playsinline muted></video>
+                <div class="cell__scanframe" aria-hidden="true"></div>
+            </div>
+            <p id="buddyScanHint" class="cell__lead"></p>
+            <form id="buddyCodeForm" class="cell__codeform">
+                <label class="row__label" for="buddyCodeInput">Ou tape le code du binôme</label>
+                <div class="inline">
+                    <input id="buddyCodeInput" class="input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-…" aria-label="Code du binôme">
+                    <button class="btn btn--primary" type="submit">Rejoindre</button>
+                </div>
+                <p id="buddyJoinMsg" class="row__hint"></p>
+            </form>
+        </div>
+
+        <!-- Partager -->
+        <div id="buddyShare" class="cellview hidden">
+            <p class="cell__lead">Montre ce QR à la personne à ajouter, ou dicte-lui le code. En vrai, et une seule fois.</p>
+            <div class="cell__qrwrap"><canvas id="buddyQr" class="cell__qr" width="320" height="320"></canvas></div>
+            <p id="buddyCodeText" class="cell__code"></p>
+            <button id="buddyCopyBtn" class="btn btn--ghost" type="button"><span data-icon="copy"></span>Copier le code</button>
+        </div>
+    </section>
+
+    <!-- Gazé·e : écran plein, lisible les yeux en larmes -->
+    <section id="gasCard" class="fullcard fullcard--gaz hidden" role="dialog" aria-labelledby="gasTitle">
+        <h2 id="gasTitle" class="fc__title">Gazé·e : quoi faire</h2>
+        <ol class="steps">
+            <li>Sors du nuage, de préférence face au vent, sans t'approcher de la ligne de police.</li>
+            <li>Ne frotte pas tes yeux.</li>
+            <li>Retire tes lentilles. Rince beaucoup : sérum phy ou eau claire.</li>
+            <li>Respire lentement. Ça passe en 10 à 30 minutes.</li>
+        </ol>
+        <div id="gasWind" class="windbox hidden">
+            <span class="windbox__compass"><span id="gasWindArrow" class="windbox__arrow arrow"></span></span>
+            <span>
+                <strong>Pour sortir du gaz, marche par là</strong>
+                <span id="gasWindText"></span>
+                <span class="windbox__credit">Si la police est de ce côté, sors plutôt par le côté du nuage. Vent de la région, pas de ta rue : regarde aussi où part la fumée. Météo : Open-Meteo.com (licence CC BY 4.0)</span>
+            </span>
+        </div>
+        <div class="fc__actions">
+            <button id="gasHelp" class="btn btn--aide" type="button"><span data-icon="plus"></span>Demander un medic</button>
+            <button class="btn btn--ink" type="button" data-close>Fermer</button>
+        </div>
+    </section>
+
+    <!-- Premier lancement : les règles, en quatre phrases -->
+    <section id="intro" class="fullcard fullcard--intro hidden" role="dialog" aria-labelledby="introTitle">
+        <div class="intro__brand">
+            <span class="intro__logo" data-icon="eye"></span>
+            <h1 id="introTitle">Vigie</h1>
+        </div>
+        <p class="intro__lead">Une carte partagée pour se protéger pendant les manifs.</p>
+        <ul class="rules">
+            <li><span data-icon="eye"></span><span>Tout ce qui est sur la carte, la police peut le lire. On n'y met que des dangers.</span></li>
+            <li><span data-icon="lock"></span><span>Une demande d'aide ne va qu'aux medics.</span></li>
+            <li><span data-icon="pin"></span><span>Un signalement part avec le point visé, arrondi à 50 m : par défaut, là où tu es. Jamais ton nom ni ton numéro.</span></li>
+            <li><span data-icon="timer"></span><span>Un danger s'efface <span data-cfg="reportTtlMin">25</span> minutes après sa dernière confirmation. Le serveur ne garde ni historique ni adresse IP.</span></li>
+            <li><span data-icon="phone"></span><span>Vigie ne prévient que si elle est ouverte, écran allumé : rien ne sonne dans ta poche.</span></li>
+        </ul>
+        <p id="introDemo" class="intro__demo hidden"></p>
+        <button id="introInstall" class="link intro__install" type="button">Installer Vigie sur mon téléphone</button>
+        <div class="fc__actions">
+            <button id="introGo" class="btn btn--primary" type="button">C'est parti</button>
+        </div>
+    </section>
+
+    <div id="toast" class="toast hidden" role="status">
+        <span id="toastText"></span>
+        <button id="toastUndo" class="toast__undo hidden" type="button">Annuler</button>
+        <span id="toastBar" class="toast__bar"></span>
+    </div>
+</body>
+</html>

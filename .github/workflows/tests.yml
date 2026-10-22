@@ -1,0 +1,16 @@
+# Vérifications à chaque envoi et à chaque proposition : installation propre, syntaxe, puis toutes
+# les suites de tests/ (sans la carte de France, dont les contrôles sautent d'eux-mêmes).
+name: Tests
+on: [push, pull_request]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - run: for f in server.js config.js pmtiles.mjs public/js/*.js public/sw.js scripts/*.mjs scripts/*.js; do node --check "$f"; done
+      - run: bash -n deploiement/envoyer.sh && bash -n deploiement/installer.sh && bash -n deploiement/maj.sh
+      - run: npm test

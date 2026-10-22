@@ -1,0 +1,44 @@
+# Vigie derrière Caddy : HTTPS automatique (certificat Let's Encrypt renouvelé tout seul).
+# Remplacer vigie.exemple.fr par le nom de domaine, puis :
+#   sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl restart caddy
+# (deploiement/installer.sh fait tout cela lui-même)
+{
+	# AUCUN journal, même d'erreur : le journal d'erreurs par défaut noterait l'adresse IP, l'adresse
+	# demandée et les en-têtes de chaque requête en échec (par exemple les 502 pendant un redémarrage).
+	log {
+		output discard
+	}
+	# Pas d'interface d'administration locale : un programme de la machine ne peut pas rallumer les
+	# journaux. Conséquence : « systemctl reload caddy » ne marche plus, on fait « restart ».
+	admin off
+}
+
+vigie.exemple.fr {
+	# Le téléphone ne parle plus jamais à ce domaine qu'en HTTPS (pas de version http contrefaite)
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# Aucune requête de l'appli ne dépasse quelques kilo-octets
+	request_body {
+		max_size 64KB
+	}
+
+	# Réponses JSON de l'API compressées (l'appli et la carte le sont déjà par Vigie ; le flux temps
+	# réel ne l'est pas, pour que chaque évènement parte tout de suite)
+	encode {
+		gzip
+		match {
+			header Content-Type application/json*
+		}
+	}
+
+	reverse_proxy 127.0.0.1:4321 {
+		# Flux temps réel (SSE) : chaque évènement part tout de suite, sans attendre
+		flush_interval -1
+		# Vigie n'a pas besoin de l'adresse IP des téléphones : Caddy ne la lui transmet pas
+		header_up -X-Forwarded-For
+		transport http {
+			# Plus court que Vigie (75 s) : Caddy n'envoie jamais une requête sur une connexion que Vigie ferme
+			keepalive 60s
+		}
+	}
+}

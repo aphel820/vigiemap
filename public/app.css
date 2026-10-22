@@ -1,0 +1,1174 @@
+/* Vigie : feuille de style
+   Pensée pour être lue en courant, les yeux qui pleurent, le téléphone dans une main.
+   Règles : cibles de 56 px minimum, texte de 18 px minimum, la couleur ne sert
+   qu'à dire un type de danger. Le reste de l'interface est du bitume neutre. */
+
+@font-face {
+    font-family: 'Atkinson Hyperlegible';
+    src: url('vendor/fonts/atkinson-400.woff2') format('woff2');
+    font-weight: 400;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Atkinson Hyperlegible';
+    src: url('vendor/fonts/atkinson-700.woff2') format('woff2');
+    font-weight: 700;
+    font-display: swap;
+}
+
+/* ------------------------------------------------------------ jetons */
+
+:root {
+    /* Nuit : bitume */
+    --fond: #16191C;
+    --plaque: #23272C;
+    --bord: #353B42;
+    --bord-fort: #5A626C;
+    --bord-btn: transparent;
+    --texte: #F4F4F0;
+    --texte-2: #B9BFC6;
+    --encre: #0E1012;
+    --voile: rgba(0, 0, 0, .5);
+    --ombre: 0 2px 10px rgba(0, 0, 0, .5);
+    --ombre-mk: 0 3px 8px rgba(0, 0, 0, .55);
+
+    /* Jaune de signalisation temporaire : la seule couleur d'action */
+    --chantier: #FFC800;
+
+    /* Un type de danger, une couleur */
+    --c-charge: #FF4A3D;
+    --c-nasse: #B98AFF;
+    --c-gaz: #E4E9ED;
+    --c-eau: #3DB5FF;
+    --c-tirs: #FF9426;
+    --c-interp: #FF70B3;
+    --c-tension: #FFE14D;
+    --c-agressif: #E0457B;
+    --c-filtrage: #4FD1C5;
+    --c-ferme: #C2AC86;
+    --c-aide: #2FD36F;
+
+    --r-plaque: 10px;
+    --r-tuile: 14px;
+    --r-feuille: 20px;
+    --dock-h: 96px;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --font: 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+    color-scheme: dark;
+}
+
+/* Plein soleil : papier blanc, traits noirs épais, ombres dures */
+:root[data-theme="soleil"] {
+    --fond: #FFFFFF;
+    --plaque: #FFFFFF;
+    --bord: #0E1012;
+    --bord-fort: #0E1012;
+    --bord-btn: #0E1012;
+    --texte: #0E1012;
+    --texte-2: #353B42;
+    --voile: rgba(0, 0, 0, .35);
+    --ombre: 0 3px 0 #0E1012;
+    --ombre-mk: 0 2px 0 #0E1012;
+    --c-gaz: #CDD5DC;
+
+    color-scheme: light;
+}
+
+.t-charge { --tc: var(--c-charge); }
+.t-nasse { --tc: var(--c-nasse); }
+.t-gaz { --tc: var(--c-gaz); }
+.t-eau { --tc: var(--c-eau); }
+.t-tirs { --tc: var(--c-tirs); }
+.t-interp { --tc: var(--c-interp); }
+.t-tension { --tc: var(--c-tension); }
+.t-agressif { --tc: var(--c-agressif); }
+.t-filtrage { --tc: var(--c-filtrage); }
+.t-ferme { --tc: var(--c-ferme); }
+.t-aide { --tc: var(--c-aide); }
+
+/* ------------------------------------------------------------ base */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--fond);
+    color: var(--texte);
+    font-family: var(--font);
+    font-size: 18px;
+    line-height: 1.35;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: auto;
+}
+
+button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+button:disabled { opacity: .5; cursor: default; }
+
+:focus-visible { outline: 3px solid var(--chantier); outline-offset: 3px; }
+
+.hidden { display: none !important; }
+
+.ico {
+    display: block;
+    width: 1em;
+    height: 1em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.ico .f { fill: currentColor; stroke: none; }
+[data-icon] { display: inline-flex; flex: none; }
+
+.arrow { display: inline-flex; transition: transform .3s ease-out; }
+
+/* ------------------------------------------------------------ carte */
+
+#map {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background: var(--fond);
+}
+.leaflet-container { background: var(--fond); font-family: var(--font); }
+
+/* Carte en images (repli sans carte de France) : inversée et désaturée la nuit, pour que seuls les
+   dangers ressortent. La carte vectorielle, elle, a son propre style nuit. */
+:root[data-theme="nuit"] .carte-image .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.3);
+}
+/* Soleil : la carte un peu plus contrastée pour rester lisible en plein jour */
+:root[data-theme="soleil"] .leaflet-tile-pane { filter: contrast(1.08) saturate(.8); }
+.leaflet-bottom { bottom: calc(var(--dock-h) + var(--safe-b)); }
+.leaflet-control-attribution.leaflet-control {
+    margin: 0;
+    padding: 1px 6px;
+    font-size: 10px;
+    line-height: 1.4;
+    background: var(--fond);
+    color: var(--texte-2);
+    opacity: .85;
+}
+.leaflet-control-attribution a { color: inherit; }
+
+/* Marqueurs : une plaque ronde, un pictogramme, l'âge en dessous */
+.mk-wrap { background: none; border: 0; }
+.mk {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 56px;
+    opacity: var(--fade, 1);
+}
+.mk__plate {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--tc);
+    color: var(--encre);
+    border: 3px solid var(--encre);
+    box-shadow: 0 0 0 2px var(--tc), var(--ombre-mk);
+}
+.mk__plate .ico { font-size: 28px; stroke-width: 2.6; }
+.mk.is-unsure .mk__plate {
+    background: var(--fond);
+    color: var(--tc);
+    border: 3px dashed var(--tc);
+    box-shadow: var(--ombre-mk);
+}
+.mk__q {
+    position: absolute;
+    top: -5px;
+    right: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--texte);
+    color: var(--fond);
+    font-size: 15px;
+    font-weight: 700;
+}
+.mk__age {
+    margin-top: 4px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: var(--fond);
+    color: var(--texte);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.mk.is-help .mk__plate { border-radius: 12px; }
+.mk.is-taken { opacity: .55; }
+
+/* Toi : point blanc cerclé de jaune (le bleu est réservé au canon à eau) */
+.me {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--texte);
+    border: 4px solid var(--encre);
+    box-shadow: 0 0 0 4px var(--chantier), var(--ombre-mk);
+}
+
+.viseur {
+    position: fixed;
+    z-index: 15;
+    left: 50%;
+    width: 76px;
+    height: 76px;
+    transform: translate(-50%, -50%);
+    color: var(--chantier);
+    pointer-events: none;
+    filter: drop-shadow(0 0 1.5px var(--encre)) drop-shadow(0 0 1.5px var(--encre));
+}
+
+/* ------------------------------------------------------------ barre du haut */
+
+.topbar {
+    position: fixed;
+    z-index: 20;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: calc(var(--safe-t) + 10px) 12px 0;
+    pointer-events: none;
+}
+.topbar > * { pointer-events: auto; }
+
+.plate {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 48px;
+    padding: 0 14px;
+    border-radius: var(--r-plaque);
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+    box-shadow: var(--ombre);
+    font-size: 16px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.plate .ico { font-size: 22px; }
+.plate--icon {
+    width: 52px;
+    height: 52px;
+    margin-left: auto;
+    padding: 0;
+    justify-content: center;
+}
+.plate--icon .ico { font-size: 28px; }
+
+.dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--texte-2); }
+.plate--net[data-state="live"] .dot { background: var(--c-aide); }
+.plate--net[data-state="off"] { border-color: var(--chantier); }
+.plate--net[data-state="off"] .dot { background: var(--chantier); }
+
+/* ------------------------------------------------------------ alertes et bandeaux */
+
+.stack {
+    position: fixed;
+    z-index: 19;
+    top: calc(var(--safe-t) + 68px);
+    left: 12px;
+    right: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+.stack > * { pointer-events: auto; }
+
+/* L'alerte de proximité : une plaque de signalisation, lisible d'un coup d'œil */
+.alert {
+    position: relative;
+    border-radius: var(--r-tuile);
+    background: var(--tc);
+    color: var(--encre);
+    border: 3px solid var(--encre);
+    box-shadow: 0 0 0 2px var(--tc), var(--ombre);
+}
+/* Pictogramme | quoi | boussole
+   Pictogramme | à quelle distance, où
+   Pictogramme | depuis quand, confirmé ou non */
+.alert__main {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 50px 1fr 56px;
+    grid-template-areas:
+        "icon title compass"
+        "icon where compass"
+        "icon meta meta";
+    column-gap: 12px;
+    padding: 12px 12px 12px 10px;
+    text-align: left;
+}
+.alert__icon { grid-area: icon; align-self: start; padding-top: 2px; }
+.alert__icon .ico { font-size: 50px; stroke-width: 2.6; }
+.alert__title {
+    grid-area: title;
+    align-self: end;
+    font-size: clamp(22px, 6.6vw, 28px);
+    font-weight: 700;
+    line-height: 1.05;
+}
+.alert__where { grid-area: where; align-self: start; margin-top: 2px; font-size: 18px; font-weight: 700; line-height: 1.2; }
+.alert__dist { font-size: 26px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.alert__compass {
+    grid-area: compass;
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--encre);
+    color: var(--tc);
+}
+.alert__compass .ico { font-size: 34px; }
+/* Sans boussole : la flèche suit la carte, nord en haut */
+.alert__compass { position: relative; }
+.alert__compass.is-nord::before {
+    content: 'N';
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+.alert__meta {
+    grid-area: meta;
+    margin-top: 6px;
+    padding-right: 44px;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+.alert__meta span { display: block; }
+.alert__close {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--encre);
+    color: var(--tc);
+}
+.alert__close .ico { font-size: 22px; stroke-width: 3; }
+
+/* Non confirmé : même forme, en pointillés, sans aplat */
+.alert.is-unsure {
+    background: var(--plaque);
+    color: var(--texte);
+    border: 3px dashed var(--tc);
+    box-shadow: var(--ombre);
+}
+.alert.is-unsure .alert__icon { color: var(--tc); }
+.alert.is-unsure .alert__compass,
+.alert.is-unsure .alert__close { background: var(--fond); border: 2px solid var(--tc); }
+/* Soleil : sur fond blanc, une couleur de danger claire (gaz, « Ça se tend ») ne se voyait plus. Aplat de
+   couleur et trait noir, le pointillé suffit à dire « pas encore confirmé » */
+:root[data-theme="soleil"] .mk.is-unsure .mk__plate { background: var(--tc); color: var(--encre); border-color: var(--encre); }
+:root[data-theme="soleil"] .alert.is-unsure .alert__icon { color: var(--encre); }
+:root[data-theme="soleil"] .alert.is-unsure .alert__compass,
+:root[data-theme="soleil"] .alert.is-unsure .alert__close { background: var(--tc); color: var(--encre); border-color: var(--encre); }
+
+.alert.is-enter { animation: alerte-in .32s cubic-bezier(.2, .9, .3, 1.3); }
+@keyframes alerte-in { from { transform: translateY(-16px) scale(.98); opacity: 0; } }
+
+.notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 10px 10px 14px;
+    border-radius: var(--r-tuile);
+    background: var(--c-aide);
+    color: var(--encre);
+    border: 3px solid var(--encre);
+    box-shadow: var(--ombre);
+    text-align: left;
+}
+.notice__icon .ico { font-size: 30px; stroke-width: 3; }
+.notice__text { flex: 1; min-width: 0; }
+.notice__text strong { display: block; font-size: 19px; line-height: 1.15; }
+.notice__text span { display: block; margin-top: 2px; font-size: 15px; font-weight: 700; }
+.notice__btn {
+    flex: none;
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 10px;
+    background: var(--encre);
+    color: var(--c-aide);
+    font-size: 16px;
+    font-weight: 700;
+}
+.notice--medic {
+    min-height: 52px;
+    padding: 6px 14px;
+    background: var(--plaque);
+    color: var(--texte);
+    border: 2px solid var(--c-aide);
+}
+.notice--medic .notice__icon { color: var(--c-aide); }
+.notice--medic .notice__icon .ico { font-size: 26px; }
+.notice--medic strong { font-size: 18px; }
+.notice--pos {
+    padding: 6px 12px;
+    background: var(--plaque);
+    color: var(--texte);
+    border: 2px dashed var(--chantier);
+}
+.notice--pos .notice__icon { color: var(--chantier); }
+.notice--pos .notice__icon .ico { font-size: 24px; }
+.notice--pos strong { font-size: 16px; }
+.notice--pos .notice__text span { font-size: 14px; font-weight: 400; color: var(--texte-2); }
+.notice__more { flex: none; font-size: 16px; font-weight: 700; text-decoration: underline; text-underline-offset: 4px; }
+
+/* ------------------------------------------------------------ commandes sur la carte */
+
+.side,
+.chips {
+    position: fixed;
+    z-index: 18;
+    bottom: calc(var(--dock-h) + var(--safe-b) + 16px);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.side { right: 12px; }
+.chips { left: 12px; align-items: flex-start; }
+
+.zoom {
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--r-plaque);
+    overflow: hidden;
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+    box-shadow: var(--ombre);
+}
+.zoom button { width: 56px; height: 56px; display: grid; place-items: center; }
+.zoom button + button { border-top: 2px solid var(--bord); }
+.round {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+    box-shadow: var(--ombre);
+}
+.side .ico { font-size: 28px; }
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 52px;
+    padding: 0 18px 0 14px;
+    border-radius: 26px;
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+    box-shadow: var(--ombre);
+    font-size: 18px;
+    font-weight: 700;
+}
+.chip .ico { font-size: 26px; }
+
+/* ------------------------------------------------------------ dock : les deux gestes vitaux */
+
+.dock {
+    position: fixed;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    gap: 10px;
+    padding: 10px 12px calc(var(--safe-b) + 12px);
+    background: var(--fond);
+    border-top: 2px solid var(--bord);
+}
+.dock__btn {
+    height: 74px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border-radius: 16px;
+    color: var(--encre);
+    border: 3px solid var(--bord-btn);
+    font-size: 24px;
+    font-weight: 700;
+}
+.dock__btn .ico { font-size: 34px; stroke-width: 2.6; }
+.dock__btn--danger { background: var(--chantier); }
+.dock__btn--help { background: var(--c-aide); }
+
+.dock__btn:active,
+.tile:active,
+.btn:active,
+.chip:active,
+.round:active { transform: scale(.97); }
+
+/* En train de viser : on dégage tout ce qui cache la carte */
+body.is-aiming .dock,
+body.is-aiming .stack,
+body.is-aiming .side,
+body.is-aiming .chips,
+body.is-aiming .leaflet-control-container { visibility: hidden; }
+
+/* ------------------------------------------------------------ feuilles */
+
+.scrim { position: fixed; inset: 0; z-index: 30; background: var(--voile); }
+
+.sheet {
+    position: fixed;
+    z-index: 40;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 84vh;
+    max-height: 84dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 16px 12px calc(var(--safe-b) + 14px);
+    background: var(--fond);
+    border-top: 3px solid var(--bord-fort);
+    border-radius: var(--r-feuille) var(--r-feuille) 0 0;
+    box-shadow: 0 -8px 30px var(--voile);
+    transform: translateY(100%);
+    transition: transform .2s ease-out;
+}
+.sheet.is-open { transform: none; }
+
+.sheet__head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.sheet__head > div { flex: 1; min-width: 0; }
+.sheet__title { margin: 0; font-size: 26px; line-height: 1.1; font-weight: 700; }
+.sheet__sub { margin: 6px 0 0; font-size: 17px; line-height: 1.35; color: var(--texte-2); }
+.sheet__sub [data-icon] { display: inline-flex; vertical-align: -3px; margin-right: 6px; }
+.sheet__sub .ico { font-size: 20px; }
+.sheet__close {
+    flex: none;
+    width: 52px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+}
+.sheet__close .ico { font-size: 28px; }
+
+/* Tuiles : de grandes plaques de couleur, reconnaissables du coin de l'œil */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-height: 88px;
+    padding: 8px 12px 10px;
+    border-radius: var(--r-tuile);
+    background: var(--tc);
+    color: var(--encre);
+    border: 3px solid var(--bord-btn);
+    text-align: left;
+}
+.tile .ico { font-size: 32px; stroke-width: 2.6; margin-bottom: 2px; }
+.tile__label { font-size: clamp(18px, 5.4vw, 22px); font-weight: 700; line-height: 1.1; }
+.tile__hint { font-size: 15px; font-weight: 700; line-height: 1.2; opacity: .8; white-space: nowrap; }
+/* Dangers secondaires : une seule rangée, pour garder la carte visible au-dessus de la feuille */
+.grid--mini { margin-top: 8px; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.tile--mini {
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 66px;
+    padding: 6px 4px;
+    text-align: center;
+}
+.tile--mini .ico { font-size: 24px; margin: 0; }
+.tile--mini .tile__label { font-size: 14px; line-height: 1.1; }
+.tile--mini .tile__hint { display: none; }
+
+/* Feuilles de visée : plus compactes, la carte au-dessus doit rester grande */
+.sheet--map { padding-top: 12px; }
+.sheet--map .sheet__head { margin-bottom: 10px; }
+.sheet--map .sheet__title { font-size: 24px; }
+.sheet--map .sheet__sub { margin-top: 2px; }
+
+.detail__plate {
+    flex: none;
+    width: 60px;
+    height: 60px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--tc);
+    color: var(--encre);
+    border: 3px solid var(--encre);
+}
+.detail__plate .ico { font-size: 36px; stroke-width: 2.6; }
+.detail__plate.is-square { border-radius: 14px; }
+.detail__state {
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border-radius: var(--r-plaque);
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+    font-size: 18px;
+    font-weight: 700;
+}
+.detail__state.is-ok { border-color: var(--c-aide); }
+.detail__state.is-unsure { border-style: dashed; border-color: var(--tc); }
+
+.actions { display: grid; gap: 10px; }
+
+/* ------------------------------------------------------------ boutons */
+
+.btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 60px;
+    padding: 0 18px;
+    border-radius: var(--r-tuile);
+    border: 3px solid var(--bord-btn);
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.15;
+    text-align: center;
+    text-decoration: none;
+}
+.btn .ico { font-size: 26px; }
+.btn--primary { background: var(--chantier); color: var(--encre); }
+.btn--aide { background: var(--c-aide); color: var(--encre); }
+.btn--ghost { background: var(--plaque); color: var(--texte); border: 2px solid var(--bord-fort); }
+.btn--ink { background: var(--encre); color: var(--chantier); }
+.btn--urgence {
+    margin-top: 10px;
+    background: var(--plaque);
+    color: var(--texte);
+    border: 3px solid var(--c-charge);
+}
+.btn--urgence .ico { color: var(--c-charge); }
+
+/* Gestes graves : il faut maintenir, un appui accidentel en courant ne suffit pas */
+.btn--hold { background: var(--plaque); color: var(--texte); border: 3px solid var(--c-charge); }
+/* touch-action: none : un léger glissement du doigt (bousculade) n'annule plus l'appui en défilement */
+.hold { position: relative; overflow: hidden; touch-action: none; }
+.hold::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--c-charge);
+    transform-origin: left;
+    transform: scaleX(var(--p, 0));
+}
+.hold > span { position: relative; }
+
+/* ------------------------------------------------------------ réglages */
+
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 0;
+    border-top: 2px solid var(--bord);
+}
+.row--col { flex-direction: column; align-items: stretch; }
+.row--col .seg { align-self: flex-start; }
+
+/* Transparence : ce que le téléphone envoie, ligne par ligne */
+.transp { display: grid; gap: 10px; }
+.transp h3 { margin: 10px 0 0; }
+.transp__list { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 16px; line-height: 1.4; color: var(--texte-2); }
+.transp__log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.transp__log li { padding: 8px 10px; border: 2px solid var(--bord); border-radius: var(--r-plaque); font-size: 15px; }
+.transp__log code {
+    display: block;
+    margin-top: 4px;
+    font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: var(--texte-2);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.row__label { display: block; font-size: 19px; font-weight: 700; }
+.row__hint { display: block; margin: 4px 0 0; font-size: 16px; line-height: 1.35; color: var(--texte-2); }
+.row__hint--warn { color: var(--texte); font-weight: 700; }
+
+.seg { display: flex; border: 2px solid var(--bord-fort); border-radius: 12px; overflow: hidden; }
+.seg button { min-height: 48px; padding: 0 14px; font-size: 17px; font-weight: 700; }
+.seg button + button { border-left: 2px solid var(--bord-fort); }
+.seg button[aria-pressed="true"] { background: var(--texte); color: var(--fond); }
+
+.inline { display: flex; gap: 10px; }
+.inline .btn { width: auto; flex: none; }
+.input {
+    flex: 1;
+    min-width: 0;
+    min-height: 60px;
+    padding: 0 14px;
+    border-radius: var(--r-tuile);
+    border: 2px solid var(--bord-fort);
+    background: var(--plaque);
+    color: var(--texte);
+    font: inherit;
+    font-size: 20px;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.link {
+    min-height: 48px;
+    font-size: 18px;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+}
+.foot { margin: 16px 0 0; font-size: 15px; line-height: 1.4; color: var(--texte-2); }
+
+.buddies { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.buddies li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--r-plaque);
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+    font-size: 19px;
+    font-weight: 700;
+}
+.buddies li .ico { font-size: 22px; color: var(--c-aide); }
+.buddies li span:last-child { margin-left: auto; font-size: 15px; font-weight: 400; color: var(--texte-2); }
+
+/* ------------------------------------------------------------ cellules de confiance */
+
+.cellview { display: grid; gap: 14px; }
+.cell__lead { margin: 0; font-size: 17px; line-height: 1.4; color: var(--texte-2); }
+
+/* Badge « vérifié » sur un marqueur : neutre (jamais une couleur de danger), pictogramme bouclier */
+.mk__ok {
+    position: absolute;
+    top: -5px;
+    left: 0;
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--texte);
+    color: var(--fond);
+}
+.mk__ok .ico { font-size: 14px; stroke-width: 2.8; }
+
+/* Scan caméra : le cadre jaune aide à viser, le flux ne quitte jamais le téléphone */
+.cell__scan {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 56vh;
+    border-radius: var(--r-tuile);
+    overflow: hidden;
+    background: var(--encre);
+    border: 2px solid var(--bord);
+}
+.cell__video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cell__scanframe {
+    position: absolute;
+    inset: 16%;
+    border: 4px solid var(--chantier);
+    border-radius: 16px;
+}
+
+.cell__codeform { display: grid; gap: 8px; }
+
+/* Partage : le QR reste noir sur blanc quel que soit le thème (les scanners ont besoin du contraste).
+   Seule entorse assumée aux jetons de couleur : un QR n'est pas un élément d'interface coloré. */
+.cell__qrwrap { display: grid; place-items: center; }
+.cell__qr {
+    width: 100%;
+    max-width: 300px;
+    height: auto;
+    image-rendering: pixelated;
+    background: #FFFFFF;
+    border: 10px solid #FFFFFF;
+    border-radius: 12px;
+}
+.cell__code {
+    margin: 0;
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    word-break: break-all;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.cell__pin { display: grid; gap: 8px; }
+.cell__pinout {
+    margin: 0;
+    text-align: center;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* Marqueur d'un binôme interpellé sur la carte (position partagée) */
+.mk.is-buddy .mk__plate { background: var(--c-charge); color: var(--encre); border-radius: 12px; }
+.mk.is-buddy .mk__age { background: var(--c-charge); color: var(--encre); }
+
+.detail__state.is-warn { border-color: var(--chantier); border-style: solid; }
+
+/* ------------------------------------------------------------ binôme */
+
+#buddyMember { display: grid; gap: 12px; }
+
+.buddylist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.buddylist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--r-plaque);
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+}
+.buddy__ic { flex: none; }
+.buddy__ic .ico { font-size: 26px; stroke-width: 2.6; }
+.buddy.is-ok .buddy__ic { color: var(--c-aide); }
+.buddy.is-late { border-color: var(--chantier); }
+.buddy.is-late .buddy__ic { color: var(--chantier); }
+.buddy.is-arrest { border-color: var(--c-charge); }
+.buddy.is-arrest .buddy__ic { color: var(--c-charge); }
+.buddy__txt { flex: 1; min-width: 0; }
+.buddy__txt strong { display: block; font-size: 19px; font-weight: 700; }
+.buddy__txt span { display: block; margin-top: 2px; font-size: 15px; font-weight: 700; color: var(--texte-2); }
+.buddy__loc {
+    flex: none;
+    align-self: center;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 10px;
+    background: var(--encre);
+    color: var(--c-charge);
+    font-size: 15px;
+    font-weight: 700;
+}
+.buddy--empty { display: block; font-size: 16px; font-weight: 400; line-height: 1.4; color: var(--texte-2); }
+
+/* Bannière d'alarme binôme : sobre pour un silence, rouge pleine pour une interpellation */
+.notice--buddy { min-height: 56px; background: var(--plaque); color: var(--texte); border: 2px solid var(--chantier); }
+.notice--buddy .notice__icon { color: var(--chantier); }
+.notice--buddy.is-arrest { background: var(--c-charge); color: var(--encre); border: 3px solid var(--encre); }
+.notice--buddy.is-arrest .notice__icon { color: var(--encre); }
+
+/* ------------------------------------------------------------ message bref */
+
+.toast {
+    position: fixed;
+    z-index: 70;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--dock-h) + var(--safe-b) + 12px);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    padding: 10px 10px 14px 16px;
+    border-radius: var(--r-tuile);
+    background: var(--texte);
+    color: var(--fond);
+    box-shadow: var(--ombre);
+    font-size: 18px;
+    font-weight: 700;
+    overflow: hidden;
+}
+body.is-aiming .toast,
+body.has-sheet .toast { bottom: calc(var(--safe-b) + 12px); }
+.toast__undo {
+    flex: none;
+    margin-left: auto;
+    min-height: 48px;
+    padding: 0 16px;
+    border-radius: 10px;
+    background: var(--fond);
+    color: var(--texte);
+    font-weight: 700;
+}
+.toast__bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 5px;
+    background: var(--chantier);
+    transform-origin: left;
+}
+@keyframes vide { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* ------------------------------------------------------------ écrans pleins */
+
+.fullcard {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+    padding: calc(var(--safe-t) + 24px) 20px calc(var(--safe-b) + 20px);
+}
+.fc__title { margin: 0; font-size: 34px; line-height: 1.05; font-weight: 700; }
+.fc__actions { margin-top: auto; display: grid; gap: 10px; }
+
+/* Gazé·e : noir sur jaune, le contraste le plus fort qui soit */
+.fullcard--gaz { background: var(--chantier); color: var(--encre); }
+.fullcard--gaz .btn--aide { border-color: var(--encre); }
+.steps { margin: 0; padding: 0; list-style: none; counter-reset: etape; display: grid; gap: 14px; }
+.steps li {
+    counter-increment: etape;
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 12px;
+    align-items: start;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+.steps li::before {
+    content: counter(etape);
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--encre);
+    color: var(--chantier);
+    font-size: 22px;
+}
+.windbox {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px;
+    border-radius: var(--r-tuile);
+    border: 3px solid var(--encre);
+}
+.windbox__arrow {
+    flex: none;
+    width: 72px;
+    height: 72px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--encre);
+    color: var(--chantier);
+}
+.windbox__arrow .ico { font-size: 44px; }
+/* Sans boussole, la flèche suit la carte (nord en haut) : un « N » au-dessus le dit, hors rotation */
+.windbox__compass { position: relative; flex: none; }
+.windbox__compass.is-nord::before {
+    content: 'N';
+    position: absolute;
+    z-index: 1;
+    top: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--chantier);
+}
+.windbox strong { display: block; font-size: 20px; line-height: 1.2; }
+.windbox span span { display: block; margin-top: 2px; font-size: 17px; font-weight: 700; }
+.windbox span .windbox__credit { margin-top: 6px; font-size: 13px; font-weight: 400; opacity: .75; }
+
+.fullcard--intro { background: var(--fond); color: var(--texte); }
+/* « C'est parti » toujours à l'écran, même quand les règles débordent sur un petit téléphone */
+.fullcard--intro .fc__actions {
+    position: sticky;
+    bottom: calc(-1 * (var(--safe-b) + 20px));
+    margin-bottom: calc(-1 * (var(--safe-b) + 20px));
+    padding: 12px 0 calc(var(--safe-b) + 20px);
+    background: var(--fond);
+    box-shadow: 0 -12px 12px -4px var(--fond);
+}
+.intro__brand { display: flex; align-items: center; gap: 14px; }
+.intro__logo {
+    width: 64px;
+    height: 64px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: var(--chantier);
+    color: var(--encre);
+}
+.intro__logo .ico { font-size: 42px; stroke-width: 2.8; }
+.intro__brand h1 { margin: 0; font-size: 44px; line-height: 1; }
+.intro__lead { margin: 0; max-width: 26ch; font-size: 22px; font-weight: 700; line-height: 1.3; }
+.rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.rules li { display: grid; grid-template-columns: 36px 1fr; gap: 14px; align-items: start; font-size: 19px; line-height: 1.4; }
+.rules .ico { font-size: 32px; color: var(--chantier); }
+:root[data-theme="soleil"] .rules .ico { color: var(--encre); }
+.intro__demo {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: var(--r-plaque);
+    border: 2px dashed var(--chantier);
+    font-size: 16px;
+    line-height: 1.4;
+}
+:root[data-theme="soleil"] .intro__demo { border-color: var(--encre); }
+.intro__install { align-self: flex-start; }
+
+/* ------------------------------------------------------------ installer : les étapes, dessinées */
+
+.howto__seg { margin-top: 14px; align-self: flex-start; display: inline-flex; }
+#installNow + .howto__seg { margin-top: 18px; }
+.howto { margin: 16px 0 0; padding: 0; list-style: none; counter-reset: etape; display: grid; gap: 18px; }
+.howto li { display: grid; gap: 10px; }
+.howto__text { font-size: 17px; line-height: 1.4; color: var(--texte-2); }
+.howto__text strong { display: block; margin-bottom: 2px; font-size: 19px; color: var(--texte); }
+.howto__text strong::before { counter-increment: etape; content: counter(etape) ". "; }
+/* Un bout d'écran de téléphone, l'élément à toucher entouré */
+.mock {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 320px;
+    padding: 12px 14px;
+    border-radius: var(--r-tuile);
+    background: var(--plaque);
+    border: 2px solid var(--bord);
+    font-size: 17px;
+}
+.mock .ico { font-size: 26px; }
+.mock__dim { flex: 1; height: 8px; border-radius: 4px; background: var(--bord); }
+.mock__on {
+    flex: none;
+    width: 50px;
+    height: 50px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 3px solid var(--chantier);
+    color: var(--chantier);
+}
+.mock__item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 3px solid var(--chantier);
+    font-weight: 700;
+}
+.mock__app {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: var(--chantier);
+    color: var(--encre);
+}
+.mock__btn { margin-left: auto; padding: 6px 14px; border-radius: 20px; border: 3px solid var(--chantier); font-weight: 700; }
+:root[data-theme="soleil"] .mock__on,
+:root[data-theme="soleil"] .mock__item,
+:root[data-theme="soleil"] .mock__btn { border-color: var(--encre); color: var(--encre); }
+
+/* ------------------------------------------------------------ grands écrans (tests sur ordinateur) */
+
+@media (min-width: 680px) {
+    .sheet { left: 50%; right: auto; width: 560px; transform: translate(-50%, 100%); }
+    .sheet.is-open { transform: translate(-50%, 0); }
+    .stack { right: auto; width: 520px; }
+    .dock { grid-template-columns: minmax(0, 340px) minmax(0, 240px); justify-content: center; }
+    .fullcard { padding-left: max(20px, calc(50% - 280px)); padding-right: max(20px, calc(50% - 280px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *:not(.toast__bar),
+    *:not(.toast__bar)::before,
+    *:not(.toast__bar)::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}
+
+/* Texte pour les lecteurs d'écran seulement */
+.sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+.sheet:focus { outline: none; }
+
+/* Écrans de faible hauteur (iPhone SE, Android 360x640) : la feuille Signaler laissait 12 à 28 px de carte,
+   le viseur passait dessous. Grandes tuiles en ligne, sans les indications sous chaque type ; la consigne
+   de la feuille reste (plus petite), et les mini-tuiles gardent leur forme (en ligne, elles débordaient). */
+@media (max-height: 700px) {
+    .sheet--map .tile__hint { display: none; }
+    .sheet--map .sheet__sub { margin-top: 2px; font-size: 15px; line-height: 1.3; }
+    .sheet--map .grid:not(.grid--mini) .tile { min-height: 56px; flex-direction: row; align-items: center; gap: 10px; }
+}
+
+/* Barre du haut : le bouton Réglages (donc « Tout effacer ») ne sort jamais de l'écran. Ce sont les
+   plaques d'état qui se raccourcissent, avec des points de suspension. */
+.topbar .plate--icon { flex: none; }
+.plate--net,
+.plate--wind { min-width: 0; }
+.plate--wind { flex-shrink: 4; } /* le vent se raccourcit avant l'état du réseau */
+#netText,
+#windText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Téléphones étroits : champ et bouton l'un sous l'autre (« Rejoindre », « Activer » étaient rognés) */
+@media (max-width: 380px) {
+    .inline { flex-direction: column; }
+    .inline .btn { width: 100%; }
+}

@@ -1,0 +1,12 @@
+node_modules/
+cache/
+public/vendor/
+*.pmtiles
+*.pmtiles.bak
+*.pmtiles.tmp
+*.bak*
+cert/
+.env
+.vscode/
+.idea/
+*.log

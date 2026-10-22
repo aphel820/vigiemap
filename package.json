@@ -1,0 +1,24 @@
+{
+  "name": "vigie",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Carte partagée pour se protéger en manifestation (prototype).",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node server.js --demo",
+    "carte": "node scripts/carte.mjs",
+    "postinstall": "node scripts/vendor.js",
+    "test": "node scripts/tests.mjs"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5.1.0",
+    "@protomaps/basemaps": "5.7.2",
+    "leaflet": "1.9.4",
+    "protomaps-leaflet": "5.1.0"
+  }
+}

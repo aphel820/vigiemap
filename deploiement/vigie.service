@@ -1,0 +1,60 @@
+# Vigie en service système (Linux, systemd). À copier dans /etc/systemd/system/vigie.service, puis :
+#   sudo systemctl daemon-reload && sudo systemctl enable --now vigie
+# Le serveur n'écoute que la machine elle-même (HOST=127.0.0.1) : seul Caddy lui parle, en HTTPS.
+#
+# Le code medic est dans /etc/vigie/vigie.env, lisible par root seulement (une ligne
+# MEDIC_CODE=..., 16 caractères tirés au hasard : openssl rand -hex 12). Vigie refuse de démarrer sans.
+
+[Unit]
+Description=Vigie (carte de sécurité en manifestation)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vigie
+WorkingDirectory=/opt/vigie
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=4321
+EnvironmentFile=/etc/vigie/vigie.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+# 10 000 téléphones = 10 000 connexions ouvertes : de la marge pour les descripteurs de fichiers
+LimitNOFILE=65536
+# Node n'écrit que ses messages de démarrage et ses erreurs (jamais de données) ; on ne garde que les erreurs
+StandardOutput=null
+StandardError=journal
+
+# Tout reste en mémoire vive : jamais de copie sur disque (ni swap, ni image mémoire après un plantage)
+# Au plus 450 Mo pour Vigie (ses plafonds sont calculés pour), le reste pour Caddy et le système sur un
+# serveur de 1 Go. Si un jour Vigie dépassait, c'est lui seul qui serait relancé, pas Caddy.
+MemoryMax=450M
+MemorySwapMax=0
+LimitCORE=0
+
+# Droits minimaux : le serveur ne fait que lire, et seulement le réseau
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+# Un appel système hors liste reçoit une erreur au lieu de tuer Node (qui sait alors s'en passer)
+SystemCallErrorNumber=EPERM
+# Aucun chemin en écriture : en ligne, Vigie n'écrit jamais sur le disque
+
+[Install]
+WantedBy=multi-user.target

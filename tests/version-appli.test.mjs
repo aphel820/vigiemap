@@ -1,0 +1,22 @@
+// Version du cache hors ligne calculée par le serveur
+process.env.DEMO = '1'; process.env.CERT = 'nope'; process.env.KEY = 'nope';
+process.argv.push('--port=4498');
+await import(new URL('../server.js', import.meta.url));
+await new Promise((r) => setTimeout(r, 400));
+const B = 'http://localhost:4498';
+let fails = 0;
+const ok = (c, m) => { console.log(`${c ? 'PASS' : 'FAIL'} : ${m}`); if (!c) fails++; };
+const r1 = await fetch(`${B}/sw.js`);
+const t1 = await r1.text();
+const v = (t1.match(/const VERSION = '([^']*)';/) || [])[1];
+ok(/^vigie-[0-9a-f]{12}$/.test(v || ''), `version écrite par le serveur : ${v}`);
+const tag = r1.headers.get('etag');
+ok(/^"[A-Za-z0-9_-]{16}"$/.test(tag || ''), `étiquette opaque (ni date ni version en clair) : ${tag}`);
+const r2 = await fetch(`${B}/sw.js`, { headers: { 'If-None-Match': tag } });
+ok(r2.status === 304, 'même version : 304, rien à retélécharger');
+const r3 = await fetch(`${B}/sw.js`, { headers: { 'Accept-Encoding': 'br' } });
+ok(r3.headers.get('content-encoding') === 'br' && (await r3.text()).includes(v), 'version présente aussi dans la copie compressée');
+const idx = await fetch(`${B}/`);
+ok(idx.status === 200 && !(idx.headers.get('etag') || '').includes(v.slice(6)), 'les autres fichiers gardent leur étiquette habituelle');
+console.log(fails ? `\n${fails} ÉCHEC(S)` : '\nTOUT PASSE');
+process.exit(fails ? 1 : 0);
