@@ -1148,6 +1148,6 @@ if (Config.demo) seedDemo();
 server.listen(Config.port, Config.host || undefined, () => {
     const scheme = tlsOptions ? 'https' : 'http';
     console.log(`Vigie : ${scheme}://localhost:${Config.port}${Config.demo ? ' (démo)' : ''}`);
-    if (!tlsOptions) console.log('  http : caméra, binôme et hors-ligne ne marchent que sur localhost ; pour un téléphone, fournis un certificat (voir README).');
+    if (!tlsOptions) console.log('  http : caméra, binôme et hors-ligne ne marchent que sur localhost ; pour un téléphone, fournis un certificat (voir docs/developpement.md).');
     if (!Config.medicCode) console.log(`Code medic : ${medicCode}`);
 });

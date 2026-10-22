@@ -2,7 +2,7 @@
   "name": "vigie",
   "version": "0.1.0",
   "private": true,
-  "description": "Carte partagée pour se protéger en manifestation (prototype).",
+  "description": "Carte partagée pour se protéger en manifestation.",
   "license": "AGPL-3.0-or-later",
   "engines": {
     "node": ">=22"

@@ -192,7 +192,7 @@ async function voterFor(scope) {
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
         return [...new Uint8Array(buf)].slice(0, 16).map((x) => x.toString(16).padStart(2, '0')).join('');
     }
-    // Contexte non sécurisé (http sur le réseau local) : empreinte FNV, suffisante pour un prototype
+    // Contexte non sécurisé (http sur le réseau local, pour des essais) : empreinte FNV, suffisante ici
     let h1 = 0x811c9dc5;
     let h2 = 0x01000193;
     for (let i = 0; i < msg.length; i++) {
