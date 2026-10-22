@@ -1,3 +1,4 @@
 # Fins de ligne Linux partout : les scripts de déploiement tournent sur le serveur
 * text=auto eol=lf
 *.png binary
+*.pdf binary

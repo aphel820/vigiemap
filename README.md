@@ -52,6 +52,10 @@ ce que ton téléphone envoie et ce que le serveur garde.
 
 **Street medics** : le code se reçoit en personne, jamais en ligne. Puis Réglages > Mode medic.
 
+## Faire connaître Vigie
+
+Flyers et autocollant prêts à imprimer, libres de droits : [kit/](kit/).
+
 ## Signaler une faille
 
 En privé, à `contact@vigiemap.org`, jamais dans un ticket public : voir [SECURITE.md](SECURITE.md).
@@ -80,3 +84,4 @@ La démo tourne sur http://localhost:4321, avec de faux dangers. Pour aller plus
 Copyright (C) 2026 Les contributeurs de Vigie. Code libre sous licence AGPL 3.0 ou plus récente
 ([LICENSE](LICENSE)) : une version modifiée mise en ligne doit publier son code, et l'écran
 Transparence doit y mener (variable `SOURCE_URL`, voir [docs/deploiement.md](docs/deploiement.md)).
+Les flyers du dossier [kit/](kit/) sont dans le domaine public (CC0).

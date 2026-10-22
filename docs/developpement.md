@@ -94,4 +94,5 @@ l'avertissement, restent des alternatives.
 - `deploiement/maj.sh` : mise à jour du code seulement (`envoyer.sh --maj`)
 - `tests/`, `scripts/tests.mjs` : les suites de tests (`npm test`) ; `.github/workflows/tests.yml` : les mêmes à chaque envoi
 - `docs/` : conception, mise en ligne, développement
+- `kit/` : flyers et autocollant à imprimer (CC0), jamais envoyés au serveur
 - `LICENSE` (AGPL 3.0), `SECURITE.md` (signaler une faille, promesses et limites), `CONTRIBUTING.md`, `CHANGELOG.md`

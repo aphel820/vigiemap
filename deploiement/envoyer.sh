@@ -45,7 +45,8 @@ if ! git -C "$DOSSIER" diff --quiet HEAD --; then
     exit 1
 fi
 echo "==> Archive du dernier commit ($(git -C "$DOSSIER" rev-parse --short HEAD) : $(git -C "$DOSSIER" log -1 --format=%s))"
-git -C "$DOSSIER" archive --format=tar.gz --prefix=vigie/ -o "$TMP/vigie.tgz" HEAD
+# Le kit d'impression (flyers) ne sert pas au serveur : autant de moins à faire passer par Tor
+git -C "$DOSSIER" archive --format=tar.gz --prefix=vigie/ -o "$TMP/vigie.tgz" HEAD -- . ':(exclude)kit'
 echo "$(du -h "$TMP/vigie.tgz" | cut -f1) à envoyer"
 
 if [ "$MAJ" = 1 ]; then
