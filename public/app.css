@@ -719,6 +719,13 @@ body.is-aiming .leaflet-control-container { visibility: hidden; }
 
 /* Transparence : ce que le téléphone envoie, ligne par ligne */
 .transp { display: grid; gap: 10px; }
+/* Autres outils libres : une fiche par outil, ses limites dans la fiche, le lien en bas */
+.outils { display: grid; gap: 18px; }
+.outil { display: grid; gap: 6px; padding-bottom: 18px; border-bottom: 1px solid var(--bord); }
+.outil h3 { margin: 0; }
+.outil__quoi { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.3; }
+.outil .row__hint { margin: 0; }
+.outil__liens { display: grid; gap: 10px; justify-items: start; margin-top: 6px; }
 .transp h3 { margin: 10px 0 0; }
 .transp__list { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 16px; line-height: 1.4; color: var(--texte-2); }
 .transp__log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }

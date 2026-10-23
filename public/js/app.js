@@ -2875,6 +2875,7 @@ function bindUi() {
     $('#cellPinBtn').addEventListener('click', showPin);
     $('#cellCodeForm').addEventListener('submit', (e) => { e.preventDefault(); joinByCode(); });
 
+    $('#outilsBtn').addEventListener('click', () => openSheet('sheetOutils'));
     $('#transpBtn').addEventListener('click', () => {
         renderTransparence();
         openSheet('sheetTransp');

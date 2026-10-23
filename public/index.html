@@ -259,6 +259,14 @@
             </div>
         </div>
 
+        <div class="row row--col">
+            <div>
+                <span class="row__label">Autres outils libres</span>
+                <span class="row__hint">Cacher les visages avant de publier, garder une vidéo à l'abri si ton téléphone est saisi.</span>
+            </div>
+            <button id="outilsBtn" class="btn btn--ghost" type="button"><span data-icon="shield"></span>Voir les outils</button>
+        </div>
+
         <div class="row">
             <button id="rulesBtn" class="link" type="button">Revoir les règles</button>
         </div>
@@ -389,6 +397,54 @@
             <p id="medicNewPrint" class="cell__code"></p>
             <button id="medicPrintCopy" class="btn btn--ghost" type="button"><span data-icon="copy"></span>Copier l'empreinte</button>
             <p class="foot">Le code marche dès que son empreinte est ajoutée. Active-le alors dans Réglages, Mode medic, puis fais-le scanner par les medics de ton collectif. Un téléphone perdu ou saisi : crée un nouveau code et demande de couper l'ancien. Changer de code de temps en temps n'est pas une mauvaise idée.</p>
+        </div>
+    </section>
+
+    <!-- Autres outils libres : faits par d'autres, textes écrits pour Vigie, liens vers leur propre site.
+         Le serveur envoie Referrer-Policy: no-referrer : ces sites ne savent pas qu'on vient de Vigie. -->
+    <section id="sheetOutils" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="outilsTitle">
+        <div class="sheet__head">
+            <div>
+                <h2 id="outilsTitle" class="sheet__title">Autres outils libres</h2>
+                <p class="sheet__sub">Faits par d'autres équipes, gratuits, au code ouvert. Lis leurs limites avant de t'en servir.</p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+
+        <div class="outils">
+            <article class="outil">
+                <h3 class="row__label">vesky</h3>
+                <p class="outil__quoi">Cacher les visages d'une photo ou d'une vidéo avant de la publier.</p>
+                <p class="row__hint">Un carré noir sur chaque visage, posé par ton téléphone : la photo ou la vidéo n'est envoyée nulle part. Rapide.</p>
+                <div class="outil__liens">
+                    <a class="btn btn--ghost" href="https://vesky.fr" target="_blank" rel="noopener noreferrer">Ouvrir vesky</a>
+                    <a class="link" href="https://github.com/Nctrn17/vesky" target="_blank" rel="noopener noreferrer">Son code</a>
+                </div>
+            </article>
+
+            <article class="outil">
+                <h3 class="row__label">Masque</h3>
+                <p class="outil__quoi">Le même usage, plus lent, mais il rate moins de visages.</p>
+                <p class="row__hint">Tout se fait aussi sur ton téléphone, rien n'est envoyé. Il efface en plus les informations cachées dans une photo (lieu, modèle de téléphone). Garde le masquage plein : un flou laisse passer plus qu'on ne croit.</p>
+                <div class="outil__liens">
+                    <a class="btn btn--ghost" href="https://masque.onestla.tech" target="_blank" rel="noopener noreferrer">Ouvrir Masque</a>
+                    <a class="link" href="https://github.com/onestlatech/masque" target="_blank" rel="noopener noreferrer">Son code</a>
+                </div>
+            </article>
+
+            <p class="row__hint row__hint--warn">Un visage caché ne suffit pas toujours : des vêtements, un tatouage, un sac ou un lieu reconnaissable peuvent encore identifier quelqu'un. Regarde toute l'image avant de publier.</p>
+
+            <article class="outil">
+                <h3 class="row__label">GhostCam</h3>
+                <p class="outil__quoi">Filmer sans tout perdre si ton téléphone est saisi ou cassé.</p>
+                <p class="row__hint">Ton téléphone envoie la vidéo en direct, chiffrée, vers ton ordinateur à la maison : chaque seconde filmée y est déjà enregistrée, rien ne reste sur le téléphone. L'ordinateur doit rester allumé et connecté pendant toute la manif.</p>
+                <p class="row__hint row__hint--warn">En connexion directe, ton téléphone joint l'adresse internet de ta box : ton opérateur, ou quelqu'un qui saisit le téléphone pendant qu'il filme, peut la voir et remonter jusqu'à chez toi. Pour passer seulement par le relais chiffré, lance-le avec les options « -no-upnp -stun "" » (voir sa documentation).</p>
+                <div class="outil__liens">
+                    <a class="btn btn--ghost" href="https://github.com/p3374/GhostCam" target="_blank" rel="noopener noreferrer">Le télécharger</a>
+                </div>
+            </article>
+
+            <p class="foot">Vigie ne fait pas ces outils et ne les contrôle pas ; leur code est public, chacun peut le vérifier. Ces liens ouvrent leur site, qui ne sait pas que tu viens de Vigie.</p>
         </div>
     </section>
 
