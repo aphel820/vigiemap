@@ -25,6 +25,7 @@ const SHELL_FILES = [
     '/js/icons.js',
     '/js/qr.js',
     '/js/pow.js',
+    '/js/codes.js',
     '/vendor/leaflet/leaflet.js',
     '/vendor/leaflet/leaflet.css',
     '/vendor/protomaps-leaflet/protomaps-leaflet.js',
@@ -104,3 +105,20 @@ async function shell(e, url) {
     }
     return (await net) || new Response('Hors ligne', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 }
+
+// Alerte en poche (mode medic) : l'envoi ne contient rien, la notification non plus (ni lieu, ni besoin).
+// Il faut ouvrir Vigie pour voir la demande. Une seule notification à la fois : la suivante la remplace.
+self.addEventListener('push', (e) => {
+    e.waitUntil(self.registration.showNotification('Vigie : demande d\'aide près de toi', {
+        body: 'Ouvre Vigie pour la voir.',
+        tag: 'vigie-aide',
+        renotify: true,
+        icon: '/icon-192.png',
+    }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+    e.notification.close();
+    e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then((list) => (list.length ? list[0].focus() : self.clients.openWindow('/'))));
+});

@@ -765,6 +765,9 @@ body.is-aiming .leaflet-control-container { visibility: hidden; }
     text-underline-offset: 4px;
 }
 .foot { margin: 16px 0 0; font-size: 15px; line-height: 1.4; color: var(--texte-2); }
+/* Case à cocher lisible au doigt : la case et sa phrase, toute la ligne cliquable */
+.check { display: flex; gap: 12px; align-items: flex-start; font-size: 16px; line-height: 1.35; color: var(--texte-2); cursor: pointer; }
+.check input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--c-aide); }
 
 .buddies { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
 .buddies li {
@@ -966,6 +969,15 @@ body.has-sheet .toast { bottom: calc(var(--safe-b) + 12px); }
 /* Gazé·e : noir sur jaune, le contraste le plus fort qui soit */
 .fullcard--gaz { background: var(--chantier); color: var(--encre); }
 .fullcard--gaz .btn--aide { border-color: var(--encre); }
+/* Sept conseils débordent : « Demander un medic » reste à l'écran, comme « C'est parti » à l'intro */
+.fullcard--gaz .fc__actions {
+    position: sticky;
+    bottom: calc(-1 * (var(--safe-b) + 20px));
+    margin-bottom: calc(-1 * (var(--safe-b) + 20px));
+    padding: 12px 0 calc(var(--safe-b) + 20px);
+    background: var(--chantier);
+    box-shadow: 0 -12px 12px -4px var(--chantier);
+}
 .steps { margin: 0; padding: 0; list-style: none; counter-reset: etape; display: grid; gap: 14px; }
 .steps li {
     counter-increment: etape;

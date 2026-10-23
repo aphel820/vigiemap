@@ -29,6 +29,9 @@ npm start
 
 Hors démo, Vigie refuse de démarrer sans code medic : la variable `MEDIC_CODE`, au moins 16
 caractères tirés au hasard (`openssl rand -hex 12` en donne 24). En démo, le code est toujours `medic-demo`.
+Les codes de collectifs sont lus dans `/etc/vigie-medics.txt` (ou la variable `MEDIC_LIST`) : pour
+en essayer un en local, crée-le dans l'appli et mets son empreinte dans un fichier pointé par
+`MEDIC_LIST`.
 
 Montrer la démo à quelqu'un, le temps d'une session, sans serveur : un tunnel gratuit
 localhost.run (adresse HTTPS au hasard, sans compte, rien à installer). Dans un premier
@@ -87,11 +90,13 @@ l'avertissement, restent des alternatives.
 - `public/js/icons.js` : pictogrammes et types de signalements
 - `public/js/qr.js` : générateur de QR maison (cellule, binôme, adresse de Vigie)
 - `public/js/pow.js` : SHA-256 maison + preuve de travail anti-spam (module et worker)
+- `public/js/codes.js` : codes à partager (base32) et empreinte d'un code de collectif de medics, chargé aussi par le serveur
 - `public/sw.js` : hors ligne (coque et tuiles en cache, API jamais en cache)
 - `deploiement/envoyer.sh`, `deploiement/installer.sh` : mise en ligne en une commande (envoi par Tor, installation complète sur Debian 13)
 - `deploiement/Caddyfile`, `deploiement/caddy-memoire.conf`, `deploiement/vigie.service` : mise en ligne (HTTPS sans journal, mémoire jamais sur disque, service système)
 - `scripts/mesure.mjs` : banc de mesure sur un petit téléphone simulé (Chrome, Chromium ou Edge sans fenêtre)
 - `deploiement/maj.sh` : mise à jour du code seulement (`envoyer.sh --maj`)
+- `deploiement/medics.sh` : ajouter, retirer ou compter les empreintes des codes de collectifs de medics (par Tor)
 - `tests/`, `scripts/tests.mjs` : les suites de tests (`npm test`) ; `.github/workflows/tests.yml` : les mêmes à chaque envoi
 - `docs/` : conception, mise en ligne, développement
 - `kit/` : flyers et autocollant à imprimer (CC0), jamais envoyés au serveur

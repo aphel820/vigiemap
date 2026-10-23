@@ -4,9 +4,9 @@
 
 import http from 'node:http';
 import https from 'node:https';
-import { createReadStream, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
-import { randomBytes, timingSafeEqual, createHash, createHmac } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHash, createHmac, createECDH, createPrivateKey, sign } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompress, gzip, constants as zlib } from 'node:zlib';
@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import { pipeline } from 'node:stream';
 import { Config } from './config.js';
 import { openPmtiles } from './pmtiles.mjs';
+import { cleanCode, medicPrint, MEDIC_CODE_RE, PRINT_RE } from './public/js/codes.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const VIGIE_VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -94,6 +95,29 @@ if (!Config.demo && (!Config.medicCode || Config.medicCode.length < 16 || Config
     fatal('MEDIC_CODE manquant, trop court (16 caractères au moins, tirés au hasard) ou encore à « a-remplacer ».');
 }
 const medicCode = Config.demo ? 'medic-demo' : Config.medicCode;
+
+// Codes des collectifs de medics : le serveur ne connaît que leurs empreintes (voir public/js/codes.js),
+// sans nom, une par ligne dans Config.medicList. Saisi, il ne révèle ni les codes ni les collectifs.
+// La liste est relue quand le fichier change (au plus une fois par seconde) : ajouter ou couper un
+// collectif ne redémarre rien, donc n'efface rien. Fichier absent ou illisible : aucun code de collectif.
+let medicPrints = new Set();
+const medicListSeen = { at: 0, mtime: -1 };
+function currentMedicPrints() {
+    if (!Config.medicList || now() - medicListSeen.at < 1000) return medicPrints;
+    medicListSeen.at = now();
+    try {
+        const { mtimeMs } = statSync(Config.medicList);
+        if (mtimeMs !== medicListSeen.mtime) {
+            medicListSeen.mtime = mtimeMs;
+            medicPrints = new Set(readFileSync(Config.medicList, 'utf8').split('\n')
+                .map((l) => cleanCode(l.replace(/#.*/, ''))).filter((p) => PRINT_RE.test(p)));
+        }
+    } catch {
+        medicPrints = new Set();
+        medicListSeen.mtime = -1;
+    }
+    return medicPrints;
+}
 
 const BASE_HEADERS = {
     'Referrer-Policy': 'no-referrer',
@@ -552,7 +576,14 @@ function publicHelp(h) {
     return { id: h.id, type: h.type, lat: h.lat, lng: h.lng, createdAt: toMinute(h.createdAt), takenAt: h.takenAt && toMinute(h.takenAt) };
 }
 
-const isMedic = (req) => sameSecret(req.headers['x-medic-code'], medicCode);
+// Le code du serveur (MEDIC_CODE), ou celui d'un collectif dont l'empreinte est dans la liste. Le
+// serveur ne note jamais quel code a vu ou pris quelle demande.
+function isMedic(req) {
+    const given = req.headers['x-medic-code'];
+    if (sameSecret(given, medicCode)) return true;
+    const code = cleanCode(given);
+    return MEDIC_CODE_RE.test(code) && currentMedicPrints().has(medicPrint(code));
+}
 const isOwner = (req, h) => sameSecret(req.headers['x-owner-token'], h.ownerToken);
 
 async function createHelp(req, res) {
@@ -573,7 +604,97 @@ async function createHelp(req, res) {
     }
     const h = { id: newId(), type: b.type, lat: pt.lat, lng: pt.lng, sector, createdAt: now(), takenAt: null, ownerToken: newId() };
     helps.set(h.id, h);
+    // Alerte en poche des medics du secteur, sauf si la demande a été annulée (touchée par erreur)
+    setTimeout(() => { if (helps.has(h.id) && !h.takenAt) notifyMedics(h.sector); }, Config.pushDelayMs);
     return json(res, 201, { id: h.id, ownerToken: h.ownerToken });
+}
+
+// ---------------------------------------------------------------- alertes en poche (mode medic)
+// Un medic qui les active confie au serveur l'adresse d'alerte de son téléphone (donnée par le service
+// de notification de son navigateur) et les secteurs qu'il couvre. À chaque nouvelle demande d'aide
+// dans ces secteurs, le serveur y envoie une notification VIDE : ni lieu, ni besoin, il faut ouvrir
+// Vigie pour voir. Le service de notification (Google, Apple…) voit seulement que ce téléphone reçoit
+// une alerte de Vigie, et quand. Rien n'est écrit : l'adresse est oubliée 12 h après la dernière
+// ouverture de Vigie, ou dès que le medic coupe les alertes.
+const pushSubs = new Map(); // adresse d'alerte -> { sectors, until, lastSent }
+
+// Clé VAPID : elle signe les envois, pour que seul ce serveur puisse alerter ses abonnés. Tirée du code
+// du serveur : la même à chaque redémarrage, sans fichier à écrire (le service n'écrit nulle part).
+const P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+const vapid = (() => {
+    const d = (BigInt(`0x${createHmac('sha256', medicCode).update('vigie:vapid').digest('hex')}`) % (P256_N - 1n)) + 1n;
+    const priv = Buffer.from(d.toString(16).padStart(64, '0'), 'hex');
+    const ecdh = createECDH('prime256v1');
+    ecdh.setPrivateKey(priv);
+    const pub = ecdh.getPublicKey();
+    const jwk = { kty: 'EC', crv: 'P-256', d: priv.toString('base64url'), x: pub.subarray(1, 33).toString('base64url'), y: pub.subarray(33).toString('base64url') };
+    return { key: createPrivateKey({ key: jwk, format: 'jwk' }), publicKey: pub.toString('base64url') };
+})();
+
+// Seulement les services de notification connus : jamais une adresse quelconque donnée par un téléphone
+// (sinon le serveur irait frapper où on veut, jusque sur sa propre machine)
+function pushUrl(s) {
+    if (typeof s !== 'string' || s.length > 1000) return null;
+    let u;
+    try { u = new URL(s); } catch { return null; }
+    if (u.protocol !== 'https:' && !(Config.pushInsecure && u.protocol === 'http:')) return null;
+    if (u.username || u.password) return null;
+    const host = u.hostname.toLowerCase();
+    return Config.pushHosts.some((h) => host === h || host.endsWith(`.${h}`)) ? u : null;
+}
+
+function vapidHeader(u) {
+    const part = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const claims = { aud: u.origin, exp: Math.floor(now() / 1000) + 3600, sub: `mailto:${Config.contact || 'contact@vigiemap.org'}` };
+    const unsigned = `${part({ typ: 'JWT', alg: 'ES256' })}.${part(claims)}`;
+    const sig = sign('sha256', Buffer.from(unsigned), { key: vapid.key, dsaEncoding: 'ieee-p1363' }).toString('base64url');
+    return `vapid t=${unsigned}.${sig}, k=${vapid.publicKey}`;
+}
+
+function sendPush(endpoint) {
+    const u = pushUrl(endpoint);
+    if (!u) return pushSubs.delete(endpoint);
+    const req = (u.protocol === 'https:' ? https : http).request(u, {
+        method: 'POST',
+        timeout: 10_000,
+        headers: { TTL: '600', Urgency: 'high', 'Content-Length': '0', Authorization: vapidHeader(u) },
+    }, (r) => {
+        r.resume();
+        // Abonnement mort (appli désinstallée, autorisation retirée) : oublié aussitôt
+        if (r.statusCode === 404 || r.statusCode === 410) pushSubs.delete(endpoint);
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => { /* service injoignable : l'alerte est perdue, la demande reste visible dans l'appli */ });
+    req.end();
+}
+
+function notifyMedics(sector) {
+    const t = now();
+    for (const [endpoint, s] of pushSubs) {
+        if (t > s.until) { pushSubs.delete(endpoint); continue; }
+        if (!s.sectors.has(sector) || t - s.lastSent < Config.pushMinGapMs) continue;
+        s.lastSent = t;
+        sendPush(endpoint);
+    }
+}
+
+async function pushSubscribe(req, res, sectors) {
+    if (!isMedic(req)) return json(res, 403, { error: 'Réservé aux medics.' });
+    if (!sectors?.size) return json(res, 400, { error: 'Secteurs manquants.' });
+    const b = await readJson(req, 1500);
+    if (!pushUrl(b?.endpoint)) return json(res, 400, { error: 'Adresse d\'alerte refusée.' });
+    const prev = pushSubs.get(b.endpoint);
+    // Au plafond, on refuse les nouveaux : un flood ne fait jamais perdre ses alertes à un vrai medic
+    if (!prev && pushSubs.size >= Config.maxPushSubs) return json(res, 503, { error: 'Alertes saturées : garde Vigie ouverte.' });
+    pushSubs.set(b.endpoint, { sectors, until: now() + Config.pushTtlMin * MIN, lastSent: prev?.lastSent || 0 });
+    return json(res, 200, { ttlMin: Config.pushTtlMin });
+}
+
+// Couper ses alertes : il suffit de connaître son adresse d'alerte (secrète), pas besoin du code medic
+async function pushUnsubscribe(req, res) {
+    const b = await readJson(req, 1500);
+    if (typeof b?.endpoint === 'string') pushSubs.delete(b.endpoint);
+    return json(res, 204);
 }
 
 // ---------------------------------------------------------------- binôme (relais de groupe, contenu chiffré)
@@ -746,6 +867,9 @@ async function api(req, res, url) {
             windRefreshMin: Config.windRefreshMin,
             // Code source de cette instance (licence AGPL : à montrer à qui l'utilise), s'il est publié
             sourceUrl: Config.sourceUrl,
+            contact: Config.contact,
+            vapidKey: vapid.publicKey,
+            pushTtlMin: Config.pushTtlMin,
             confirmThreshold: Config.confirmThreshold,
             maxCellTags: Config.maxCellTags,
             buddyWindowMin: Config.buddyWindowMin,
@@ -791,6 +915,11 @@ async function api(req, res, url) {
         if (action === 'confirm' && m === 'POST') return voteReport(req, res, r, 'confirm');
         if (action === 'gone' && m === 'POST') return voteReport(req, res, r, 'gone');
         if (action === 'tag' && m === 'POST') return tagReport(req, res, r);
+    }
+
+    if (resource === 'push' && !id) {
+        if (m === 'POST') return pushSubscribe(req, res, sectors);
+        if (m === 'DELETE') return pushUnsubscribe(req, res);
     }
 
     if (resource === 'help') {
@@ -1086,6 +1215,7 @@ setInterval(() => {
     const nb = Math.floor(t / Config.powWindowMs);
     for (const [k, bk] of powSeen) if (bk < nb - 1) powSeen.delete(k);
     for (const [pin, v] of pairings) if (t - v.at > PAIR_TTL) pairings.delete(pin);
+    for (const [endpoint, s] of pushSubs) if (t > s.until) pushSubs.delete(endpoint);
     // Vent : un secteur que personne n'a demandé depuis 30 min est oublié (sinon la liste dirait où et
     // quand Vigie a servi, jusqu'au redémarrage)
     for (const [sec, w] of winds) if (t - w.at > WIND_MAX_AGE) winds.delete(sec);

@@ -11,7 +11,7 @@ numéro, sans rien à installer depuis un store.
 - **Signaler un danger** : tu vises l'endroit sur la carte, le point part arrondi à 50 m. Un danger
   s'efface 25 minutes après sa dernière confirmation. La carte est publique : on n'y met que des
   dangers, jamais des personnes.
-- **Demander un secouriste** : seuls les street medics (qui ont reçu un code en personne) voient la
+- **Demander un secouriste** : seuls les street medics (avec le code de leur collectif) voient la
   demande. Le 112 reste à un geste.
 - **Binôme** : tes proches voient si tu es interpellé·e ou si tu ne donnes plus signe de vie. Tout
   est chiffré entre vous.
@@ -30,7 +30,8 @@ numéro, sans rien à installer depuis un store.
 
 Mais :
 
-- Vigie ne prévient que si elle est ouverte, écran allumé : rien ne sonne dans ta poche.
+- Vigie ne prévient que si elle est ouverte, écran allumé : rien ne sonne dans ta poche. Seuls
+  les medics peuvent activer des alertes en poche, vides, qui passent par Google ou Apple.
 - Ton opérateur mobile voit qu'un téléphone se connecte à Vigie (pas ce qu'il envoie). Un VPN de
   confiance le cache.
 - N'importe qui peut poster un faux danger, même en nombre. Seule ta cellule vient de gens que tu
@@ -50,7 +51,9 @@ ce que ton téléphone envoie et ce que le serveur garde.
    Garde l'écran allumé pour être prévenu·e.
 4. Si tu risques d'être interpellé·e : « Tout effacer » (appui long dans les réglages).
 
-**Street medics** : le code se reçoit en personne, jamais en ligne. Puis Réglages > Mode medic.
+**Street medics** : chaque collectif crée son propre code (Réglages > Mode medic > Code de collectif)
+et n'envoie que son empreinte à `contact@vigiemap.org`, depuis son adresse habituelle. Le code, lui,
+ne circule qu'entre vous, en personne. Le serveur ne garde que les empreintes, sans nom.
 
 ## Faire connaître Vigie
 

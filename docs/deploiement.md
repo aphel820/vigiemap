@@ -63,7 +63,8 @@ Le détail, pour le faire à la main :
    sudo sh -c 'umask 077; echo "MEDIC_CODE=$(openssl rand -hex 12)" > /etc/vigie/vigie.env'
    sudo systemctl daemon-reload && sudo systemctl enable --now vigie
    ```
-   Pour le transmettre aux équipes medic, de vive voix ou par messagerie chiffrée :
+   Ce code sert de secours (et de clé au serveur) ; les équipes medic utilisent plutôt le code de
+   leur collectif (voir « Codes des collectifs de medics » plus bas). Pour le lire :
    `sudo cat /etc/vigie/vigie.env`.
    Le serveur n'écoute que la machine elle-même (`HOST=127.0.0.1`), ne garde rien sur
    disque (ni swap, ni image mémoire) et n'a que les droits nécessaires.
@@ -113,3 +114,18 @@ un serveur plus gros, monter la limite avec `MAX_STREAMS=…` dans `/etc/vigie/v
 Les plafonds de `config.js` sont calculés pour que Vigie tienne dans 450 Mo au pire cas. Publier le
 code (Codeberg, GitHub) permet à d'autres collectifs d'ouvrir un serveur de secours
 avec la même procédure.
+
+**Codes des collectifs de medics.** Chaque collectif crée son code dans l'appli (Réglages > Mode
+medic > Code de collectif > Créer) et t'envoie seulement son empreinte (16 caractères,
+`XXXX-XXXX-XXXX-XXXX`) depuis son adresse habituelle. Vérifie que c'est bien la sienne (celle
+publiée sur son site), puis, depuis Git Bash, Tor Browser ouvert :
+
+```bash
+bash deploiement/medics.sh ajouter ADRESSE_IP XXXX-XXXX-XXXX-XXXX
+```
+
+Le serveur relit la liste (`/etc/vigie-medics.txt`, une empreinte par ligne, sans nom) en une
+seconde, sans redémarrer. Supprime ensuite le mail : ne garde nulle part quel collectif a quelle
+empreinte. Un téléphone saisi, ou un collectif qui change de code :
+`bash deploiement/medics.sh retirer ADRESSE_IP XXXX-XXXX-XXXX-XXXX` ; seul ce code est coupé.
+`bash deploiement/medics.sh compter ADRESSE_IP` donne le nombre de codes actifs.

@@ -217,9 +217,18 @@
                 <span id="medicHint" class="row__hint">Pour les street medics : affiche les demandes d'aide.</span>
             </div>
             <form id="medicForm" class="inline">
-                <input id="medicInput" class="input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Code medic" aria-label="Code medic">
+                <input id="medicInput" class="input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Code de ton collectif" aria-label="Code medic">
                 <button class="btn btn--aide" type="submit">Activer</button>
             </form>
+            <label id="medicKeepRow" class="check">
+                <input id="medicNoKeep" type="checkbox">
+                <span>Ne pas garder le code sur ce téléphone (téléphone d'action : il faudra le rescanner à chaque ouverture)</span>
+            </label>
+            <button id="medicSheetBtn" class="btn btn--ghost" type="button"><span data-icon="qr"></span>Code de collectif : scanner, créer, partager</button>
+            <div id="medicPushRow" class="hidden">
+                <button id="medicPushBtn" class="btn btn--ghost" type="button"><span data-icon="phone"></span><span id="medicPushLabel">M'alerter téléphone en poche</span></button>
+                <span id="medicPushHint" class="row__hint"></span>
+            </div>
             <button id="medicOff" class="btn btn--ghost hidden" type="button">Quitter le mode medic</button>
         </div>
 
@@ -326,6 +335,63 @@
         </div>
     </section>
 
+    <!-- Codes de collectif de medics : chaque collectif tire le sien ; le serveur n'en connaît que l'empreinte -->
+    <section id="sheetMedic" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="medicTitle">
+        <div class="sheet__head">
+            <button id="medicBack" class="sheet__close hidden" type="button" aria-label="Retour" data-icon="back"></button>
+            <div>
+                <h2 id="medicTitle" class="sheet__title">Code de collectif</h2>
+                <p id="medicSub" class="sheet__sub"></p>
+            </div>
+            <button class="sheet__close" type="button" aria-label="Fermer" data-close data-icon="close"></button>
+        </div>
+
+        <!-- Accueil -->
+        <div id="medicHome" class="cellview">
+            <p class="cell__lead">Chaque collectif de medics a son propre code, tiré au hasard sur un téléphone. Il ne circule qu'entre vous, en personne. Le serveur n'en connaît que l'empreinte, sans nom : il ne sait pas quel code est à quel collectif.</p>
+            <div class="actions">
+                <button id="medicScanBtn" class="btn btn--primary" type="button"><span data-icon="camera"></span>Scanner le code de mon collectif</button>
+                <button id="medicShareBtn" class="btn btn--ghost hidden" type="button"><span data-icon="qr"></span>Faire scanner mon code</button>
+                <button id="medicCreateBtn" class="btn btn--ghost" type="button"><span data-icon="plus"></span>Créer un code pour mon collectif</button>
+            </div>
+        </div>
+
+        <!-- Scanner -->
+        <div id="medicScanView" class="cellview hidden">
+            <div id="medicScan" class="cell__scan hidden">
+                <video id="medicVideo" class="cell__video" playsinline muted></video>
+                <div class="cell__scanframe" aria-hidden="true"></div>
+            </div>
+            <p id="medicScanHint" class="cell__lead"></p>
+            <form id="medicCodeForm" class="cell__codeform">
+                <label class="row__label" for="medicCodeInput">Ou tape le code</label>
+                <div class="inline">
+                    <input id="medicCodeInput" class="input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-…" aria-label="Code du collectif">
+                    <button class="btn btn--aide" type="submit">Activer</button>
+                </div>
+                <p id="medicScanMsg" class="row__hint"></p>
+            </form>
+        </div>
+
+        <!-- Partager (en personne) -->
+        <div id="medicShareView" class="cellview hidden">
+            <p class="cell__lead">Fais scanner ce QR par un·e medic de ton collectif, en personne. Ne l'envoie jamais par message, ni en photo.</p>
+            <div class="cell__qrwrap"><canvas id="medicQr" class="cell__qr" width="320" height="320"></canvas></div>
+            <p id="medicCodeText" class="cell__code"></p>
+        </div>
+
+        <!-- Créer -->
+        <div id="medicCreateView" class="cellview hidden">
+            <p class="cell__lead">Voici le code de ton collectif. Note-le en lieu sûr : Vigie ne le garde pas et ne pourra pas le retrouver.</p>
+            <p id="medicNewCode" class="cell__code"></p>
+            <button id="medicNewCopy" class="btn btn--ghost" type="button"><span data-icon="copy"></span>Copier le code</button>
+            <p class="cell__lead">Pour qu'il marche, envoie <strong>seulement son empreinte</strong> à <span id="medicContact">l'équipe de ce serveur</span>, depuis l'adresse habituelle de ton collectif. L'empreinte ne permet pas de retrouver le code.</p>
+            <p id="medicNewPrint" class="cell__code"></p>
+            <button id="medicPrintCopy" class="btn btn--ghost" type="button"><span data-icon="copy"></span>Copier l'empreinte</button>
+            <p class="foot">Le code marche dès que son empreinte est ajoutée. Active-le alors dans Réglages, Mode medic, puis fais-le scanner par les medics de ton collectif. Un téléphone perdu ou saisi : crée un nouveau code et demande de couper l'ancien. Changer de code de temps en temps n'est pas une mauvaise idée.</p>
+        </div>
+    </section>
+
     <!-- Faire connaître Vigie : le QR de l'adresse, à faire scanner autour de soi -->
     <section id="sheetShare" class="sheet hidden" role="dialog" tabindex="-1" aria-labelledby="shareTitle">
         <div class="sheet__head">
@@ -361,6 +427,8 @@
             <ul class="transp__list">
                 <li>Un danger : son type, son point arrondi, des empreintes de vote différentes pour chaque danger, et des marques de cellule qu'il ne sait pas lire. Effacé <span data-cfg="reportTtlMin">25</span> min après la dernière confirmation.</li>
                 <li>Une demande d'aide : son type et son point arrondi, visibles des seuls medics. Effacée quand tu la fermes, ou au bout de <span data-cfg="helpTtlMin">45</span> min.</li>
+                <li>Les codes des collectifs de medics : seulement leurs empreintes, sans nom. Le serveur ne note pas quel code a vu ou pris quelle demande.</li>
+                <li>Les alertes en poche, si tu les actives (mode medic) : l'adresse d'alerte de ton téléphone et les secteurs que tu couvres, jusqu'à 12 h après ta dernière ouverture de Vigie.</li>
                 <li>Le binôme : des messages chiffrés qu'il ne peut pas lire. Effacés après <span data-cfg="buddyTtlMin">90</span> min sans nouvelles.</li>
                 <li>Un code court de cellule : la clé de la cellule, <span data-cfg="pairTtlH">12</span> h, seulement si tu en crées un. Pendant ce temps, toute personne qui a le code peut entrer dans la cellule.</li>
                 <li>Où tu es, à peu près : la carte s'ouvre sur toi, donc les morceaux de carte demandés montrent la zone affichée (environ 1 à 2 km), et la connexion temps réel suit les secteurs d'environ 50 km autour de ta position. Le serveur n'en note rien ; sa mémoire garde seulement, pour aller vite, les grandes régions de carte lues récemment.</li>
@@ -369,10 +437,10 @@
             </ul>
 
             <h3 class="row__label">Ce que voit le réseau</h3>
-            <p class="row__hint">Ton opérateur mobile, et l'hébergeur du serveur, voient qu'un téléphone se connecte à Vigie et à quelle heure. Pas ce qu'il envoie : c'est chiffré. Pour cacher jusqu'à cela, active un VPN de confiance avant d'ouvrir Vigie.</p>
+            <p class="row__hint">Ton opérateur mobile, et l'hébergeur du serveur, voient qu'un téléphone se connecte à Vigie et à quelle heure. Pas ce qu'il envoie : c'est chiffré. Pour cacher jusqu'à cela, active un VPN de confiance avant d'ouvrir Vigie. Si tu actives les alertes en poche (mode medic), le service de notification de ton téléphone (Google ou Apple) voit aussi qu'une alerte de Vigie arrive, et quand, jamais où ni pourquoi.</p>
 
             <h3 class="row__label">Ce que garde ton téléphone</h3>
-            <p class="row__hint">Ta cellule et ton binôme (leurs clés, ton prénom de binôme), le code medic s'il est activé, ta demande d'aide en cours et son type, tes signalements récents et ceux en attente de réseau, les derniers dangers reçus (effacés dès l'ouverture suivante une fois périmés), et les morceaux de carte du jour et de la veille (les plus anciens s'effacent à l'ouverture suivante de Vigie). « Tout effacer » vide tout cela et retire ta demande d'aide en cours. Il ne retire pas un code court déjà créé ni ton dernier message de binôme (ils s'effacent seuls, en <span data-cfg="pairTtlH">12</span> h et <span data-cfg="buddyTtlMin">90</span> min), ni l'historique de ton navigateur, ni ce que tu as copié ou pris en capture d'écran.</p>
+            <p class="row__hint">Ta cellule et ton binôme (leurs clés, ton prénom de binôme), le code medic s'il est activé (sauf si tu as choisi de ne pas le garder), ta demande d'aide en cours et son type, tes signalements récents et ceux en attente de réseau, les derniers dangers reçus (effacés dès l'ouverture suivante une fois périmés), et les morceaux de carte du jour et de la veille (les plus anciens s'effacent à l'ouverture suivante de Vigie). « Tout effacer » vide tout cela et retire ta demande d'aide en cours. Il ne retire pas un code court déjà créé ni ton dernier message de binôme (ils s'effacent seuls, en <span data-cfg="pairTtlH">12</span> h et <span data-cfg="buddyTtlMin">90</span> min), ni l'historique de ton navigateur, ni ce que tu as copié ou pris en capture d'écran.</p>
 
             <h3 class="row__label">Ce que ton téléphone a envoyé</h3>
             <p class="row__hint">Les 60 derniers envois depuis l'ouverture de l'appli ; les morceaux de carte sont seulement comptés. Ce journal reste sur ton téléphone et s'efface à la fermeture.</p>
@@ -501,12 +569,7 @@
     <!-- Gazé·e : écran plein, lisible les yeux en larmes -->
     <section id="gasCard" class="fullcard fullcard--gaz hidden" role="dialog" aria-labelledby="gasTitle">
         <h2 id="gasTitle" class="fc__title">Gazé·e : quoi faire</h2>
-        <ol class="steps">
-            <li>Sors du nuage, de préférence face au vent, sans t'approcher de la ligne de police.</li>
-            <li>Ne frotte pas tes yeux.</li>
-            <li>Retire tes lentilles. Rince beaucoup : sérum phy ou eau claire.</li>
-            <li>Respire lentement. Ça passe en 10 à 30 minutes.</li>
-        </ol>
+        <!-- La direction d'abord : c'est la seule chose qui presse. Conseils relus par des street medics. -->
         <div id="gasWind" class="windbox hidden">
             <span class="windbox__compass"><span id="gasWindArrow" class="windbox__arrow arrow"></span></span>
             <span>
@@ -515,6 +578,15 @@
                 <span class="windbox__credit">Si la police est de ce côté, sors plutôt par le côté du nuage. Vent de la région, pas de ta rue : regarde aussi où part la fumée. Météo : Open-Meteo.com (licence CC BY 4.0)</span>
             </span>
         </div>
+        <ol class="steps">
+            <li>Reste calme, ne cours pas : courir fait respirer plus de gaz et peut faire paniquer la foule. Ça passe en 10 à 30 minutes.</li>
+            <li>Sors du nuage, de préférence face au vent, sans t'approcher de la ligne de police. Reste groupé·e.</li>
+            <li>Tant que tu es dedans, respire peu, par petites bouffées, par la bouche.</li>
+            <li>Ne frotte pas tes yeux. Rince-les : sérum phy ou eau claire. Le visage : à la lingette.</li>
+            <li>Nausée : rince-toi la gorge à l'eau et recrache, n'avale pas.</li>
+            <li>Asthme : ne prends pas ta Ventoline dans le gaz, sors d'abord du nuage.</li>
+            <li>Lentilles : n'en mets pas en manif. Si tu en portes, demande à un medic.</li>
+        </ol>
         <div class="fc__actions">
             <button id="gasHelp" class="btn btn--aide" type="button"><span data-icon="plus"></span>Demander un medic</button>
             <button class="btn btn--ink" type="button" data-close>Fermer</button>

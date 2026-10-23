@@ -83,6 +83,26 @@ export const Config = {
     // Pas de limite d'essais : elle permettrait à n'importe qui de bloquer les vrais medics ; c'est la
     // longueur du code qui le rend impossible à deviner.
     medicCode: process.env.MEDIC_CODE || null,
+    // Codes des collectifs de medics : chaque collectif tire le sien sur son téléphone, l'exploitant
+    // n'ajoute ici que son empreinte (une par ligne, sans nom ; `deploiement/medics.sh`). Hors de
+    // /etc/vigie, lisible par root seulement : le service doit pouvoir lire ce fichier. MEDIC_LIST vide :
+    // pas de codes de collectifs.
+    medicList: process.env.MEDIC_LIST ?? '/etc/vigie-medics.txt',
+    // Alertes en poche (mode medic, si le medic les active) : le serveur garde l'adresse d'alerte du
+    // téléphone en mémoire, jusqu'à 12 h après sa dernière ouverture de Vigie, et n'y envoie qu'une
+    // notification vide (« demande d'aide près de toi »), au plus une par minute, quelques secondes
+    // après la demande (le temps qu'une demande touchée par erreur soit annulée). Seuls les services de
+    // notification des navigateurs sont contactés, jamais une autre adresse donnée par un téléphone.
+    pushTtlMin: 720,
+    pushMinGapMs: 60_000,
+    pushDelayMs: 6_000,
+    maxPushSubs: 5000, // une adresse d'alerte et ses secteurs : 2 Ko au plus, soit 10 Mo au pire
+    pushHosts: (process.env.PUSH_HOSTS || 'fcm.googleapis.com,push.services.mozilla.com,web.push.apple.com,notify.windows.com')
+        .split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
+    // Tests seulement : accepte une adresse d'alerte en http (jamais sur un serveur en ligne)
+    pushInsecure: process.env.PUSH_INSECURE_TEST === '1',
+    // Adresse à laquelle un collectif envoie l'empreinte de son code (affichée dans l'appli)
+    contact: ((c) => (/^[^\s@<>"]+@[^\s@<>"]+$/.test(c) ? c : null))(process.env.CONTACT ?? 'contact@vigiemap.org'),
 
     // Anti-spam sans IP : preuve de travail (hashcash). Le téléphone doit trouver un nonce tel que
     // SHA-256(sujet|fenêtre|nonce) commence par powBits zéros : coûteux à produire, trivial à vérifier.

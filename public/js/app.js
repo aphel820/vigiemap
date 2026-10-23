@@ -6,6 +6,7 @@
 import { icon, TYPES, HELP_TYPES } from './icons.js';
 import { qrMatrix } from './qr.js';
 import { solveSync as powSolveInline } from './pow.js';
+import { b32encode, b32decode, cleanCode, medicPrint } from './codes.js';
 import { FLAVORS } from '../vendor/protomaps-leaflet/flavors.js';
 
 const L = window.L;
@@ -268,39 +269,11 @@ function newCell() {
 }
 
 // Code partageable : base32 Crockford de (id 4 octets + clé 10 octets), 23 caractères, plus le type (24).
-const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-function b32encode(bytes) {
-    let bits = 0;
-    let val = 0;
-    let out = '';
-    for (const b of bytes) {
-        val = (val << 8) | b;
-        bits += 8;
-        while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; }
-    }
-    if (bits > 0) out += B32[(val << (5 - bits)) & 31];
-    return out;
-}
-// Lettres qu'on confond à la lecture ramenées à celles de l'alphabet, séparateurs retirés
-const cleanCode = (str) => String(str).toUpperCase().replace(/I/g, '1').replace(/L/g, '1').replace(/O/g, '0').replace(/U/g, 'V').replace(/[^0-9A-Z]/g, '');
-function b32decode(str) {
-    const clean = cleanCode(str);
-    let bits = 0;
-    let val = 0;
-    const out = [];
-    for (const ch of clean) {
-        const idx = B32.indexOf(ch);
-        if (idx < 0) return null;
-        val = (val << 5) | idx;
-        bits += 5;
-        if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; }
-    }
-    return out;
-}
-// Le type du code en dernier caractère : C pour une cellule, B pour un binôme. Un code de l'un, collé ou
-// scanné dans l'écran de l'autre, est refusé : sinon un binôme recevait la clé d'une cellule, connue de
-// tous ses membres (et du serveur pendant 12 h si elle a un code court), et son chiffrement tombait.
-const CODE_TYPE = { cell: 'C', buddy: 'B' };
+// Le type du code en dernier caractère : C pour une cellule, B pour un binôme, M pour un collectif de
+// medics. Un code de l'un, collé ou scanné dans l'écran de l'autre, est refusé : sinon un binôme recevait
+// la clé d'une cellule, connue de tous ses membres (et du serveur pendant 12 h si elle a un code court),
+// et son chiffrement tombait.
+const CODE_TYPE = { cell: 'C', buddy: 'B', medic: 'M' };
 function typedBytes(code, kind) {
     const c = cleanCode(code);
     return c.length === 24 && c.endsWith(CODE_TYPE[kind]) ? b32decode(c.slice(0, -1)) : null;
@@ -1327,6 +1300,7 @@ async function medicLoop() {
     if (!state.medicCode) return;
     try {
         applyHelps(await api('GET', `/api/help?s=${wantedSectors()}`, null, { 'X-Medic-Code': state.medicCode }));
+        refreshPush();
     } catch (e) {
         if (e.status === 403) {
             stopMedic();
@@ -1337,19 +1311,31 @@ async function medicLoop() {
     if (visible()) medicTimer = setTimeout(medicLoop, 15_000);
 }
 
-async function startMedic(code) {
+// Rend un message d'erreur à afficher, ou null si le mode medic est activé. Un code de collectif est
+// nettoyé (tirets, minuscules) ; l'ancien code du serveur passe tel quel.
+async function startMedic(raw) {
+    const isCollective = typedBytes(raw, 'medic') !== null;
+    const code = isCollective ? cleanCode(raw) : String(raw).trim();
+    if (typedBytes(code, 'cell') || typedBytes(code, 'buddy')) return 'C\'est un code de cellule ou de binôme, pas un code medic.';
     try {
         applyHelps(await api('GET', `/api/help?s=${wantedSectors()}`, null, { 'X-Medic-Code': code }));
     } catch (e) {
-        $('#medicHint').textContent = e.status === 403 ? 'Code refusé. Vérifie-le auprès de ton collectif.' : 'Pas de réseau, réessaie.';
-        return;
+        if (e.status !== 403) return 'Pas de réseau, réessaie.';
+        return isCollective
+            ? 'Code refusé. S\'il vient d\'être créé, son empreinte n\'a peut-être pas encore été ajoutée.'
+            : 'Code refusé. Vérifie-le auprès de ton collectif.';
     }
+    // Téléphone d'action : le code ne vit qu'en mémoire, rien ne reste dessus s'il est saisi
+    const keep = !$('#medicNoKeep').checked;
     state.medicCode = code;
-    store.set(KEY.medic, code);
+    store.set(KEY.medic, keep ? code : null);
+    $('#medicInput').value = '';
+    $('#medicCodeInput').value = '';
     renderMedicUi();
     medicLoop();
     closeSheet();
-    toast('Mode medic activé');
+    toast(keep ? 'Mode medic activé' : 'Mode medic activé, sans garder le code sur ce téléphone');
+    return null;
 }
 
 function stopMedic() {
@@ -1358,17 +1344,154 @@ function stopMedic() {
     store.set(KEY.medic, null);
     applyHelps([]);
     renderMedicUi();
+    disablePush(); // plus medic : plus d'alertes en poche non plus
 }
 
 function renderMedicUi() {
     const on = Boolean(state.medicCode);
     $('#medicBar').classList.toggle('hidden', !on);
     $('#medicForm').classList.toggle('hidden', on);
+    $('#medicKeepRow').classList.toggle('hidden', on);
     $('#medicOff').classList.toggle('hidden', !on);
+    $('#medicShareBtn').classList.toggle('hidden', !(on && typedBytes(state.medicCode, 'medic')));
+    renderPush();
     $('#medicHint').textContent = on
         ? 'Les demandes d\'aide s\'affichent en carrés verts. Une demande peut être un piège : n\'y va jamais seul·e, regarde avant d\'approcher, et méfie-toi d\'une demande isolée loin du cortège.'
         : 'Pour les street medics : affiche les demandes d\'aide.'
             + (state.config.demoMedicCode ? ` Démo : le code est ${state.config.demoMedicCode}.` : '');
+}
+
+// --- codes de collectif : chaque collectif tire le sien ; seule son empreinte part chez l'exploitant
+const MEDIC_SUB = {
+    medicHome: 'Pour les street medics.',
+    medicScanView: 'Scanne le QR d\'un·e medic de ton collectif.',
+    medicShareView: 'Pour un·e medic de ton collectif, en personne.',
+    medicCreateView: 'Un nouveau code, pour tout ton collectif.',
+};
+const groupCode = (raw) => raw.replace(/(.{4})(?=.)/g, '$1-');
+
+function showMedicView(name) {
+    Object.keys(MEDIC_SUB).forEach((v) => $(`#${v}`).classList.toggle('hidden', v !== name));
+    $('#medicBack').classList.toggle('hidden', name === 'medicHome');
+    $('#medicSub').textContent = MEDIC_SUB[name];
+    if (name !== 'medicScanView') stopScan();
+    if (name === 'medicScanView') startMedicScan();
+    else if (name === 'medicShareView') renderMedicShare();
+    else if (name === 'medicCreateView') renderMedicCreate();
+}
+
+function openMedicSheet() {
+    renderMedicUi();
+    showMedicView('medicHome');
+    openSheet('sheetMedic');
+}
+
+function startMedicScan() {
+    $('#medicScanMsg').textContent = '';
+    startScan({
+        scan: '#medicScan', video: '#medicVideo', hint: '#medicScanHint', view: '#medicScanView',
+        onText: async (t) => {
+            const msg = typedBytes(t, 'medic') ? await startMedic(t) : 'Ce n\'est pas un code de collectif de medics.';
+            if (!msg) return;
+            showMedicView('medicScanView');
+            $('#medicScanMsg').textContent = msg;
+        },
+    });
+}
+
+function renderMedicShare() {
+    if (!typedBytes(state.medicCode, 'medic')) {
+        showMedicView('medicHome');
+        return;
+    }
+    $('#medicCodeText').textContent = groupCode(state.medicCode);
+    drawQr($('#medicQr'), state.medicCode);
+}
+
+// Un code neuf à chaque ouverture de l'écran : il n'est écrit nulle part tant qu'il n'est pas activé
+function renderMedicCreate() {
+    const code = `${b32encode(crypto.getRandomValues(new Uint8Array(14)))}${CODE_TYPE.medic}`;
+    $('#medicNewCode').textContent = groupCode(code);
+    $('#medicNewPrint').textContent = groupCode(medicPrint(code));
+    $('#medicContact').textContent = state.config.contact || 'l\'équipe de ce serveur Vigie';
+}
+
+// --- alertes en poche : une notification VIDE (« demande d'aide près de toi ») même écran éteint. Elle
+// passe par le service de notification du navigateur (Google, Apple…), qui voit qu'une alerte de Vigie
+// arrive sur ce téléphone, et quand, jamais où ni pourquoi. Le serveur oublie l'adresse d'alerte 12 h
+// après la dernière ouverture de Vigie.
+const pushSupported = () => window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const b64uBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+let pushRegAt = 0;
+
+async function pushSubscription() {
+    if (!pushSupported()) return null;
+    try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        return reg ? await reg.pushManager.getSubscription() : null;
+    } catch { return null; }
+}
+
+async function registerPush(sub) {
+    await api('POST', `/api/push?s=${wantedSectors()}`, { endpoint: sub.endpoint }, { 'X-Medic-Code': state.medicCode });
+    pushRegAt = Date.now();
+}
+
+async function enablePush() {
+    const key = state.config.vapidKey;
+    if (!pushSupported() || !key) return renderPush();
+    if (await Notification.requestPermission() !== 'granted') {
+        return renderPush('Notifications refusées : autorise-les pour Vigie dans les réglages du téléphone, puis réessaie.');
+    }
+    try {
+        // Le service worker (installé au démarrage) reçoit les alertes ; sans lui, rien ne peut arriver
+        const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, ko) => setTimeout(() => ko(new Error('pas de service worker')), 8000))]);
+        let sub = await reg.pushManager.getSubscription();
+        // Clé du serveur changée : l'ancien abonnement ne marcherait plus
+        if (sub && b64u(sub.options?.applicationServerKey || new ArrayBuffer(0)) !== key) {
+            await sub.unsubscribe();
+            sub = null;
+        }
+        sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(key) });
+        await registerPush(sub);
+        toast('Alertes en poche activées');
+    } catch (e) {
+        return renderPush(e.status === 503 ? e.message : 'Impossible d\'activer les alertes ici : garde Vigie ouverte, écran allumé.');
+    }
+    return renderPush();
+}
+
+// Couper : le serveur oublie l'adresse, le navigateur l'abandonne (elle ne servira plus à personne)
+async function disablePush() {
+    const sub = await pushSubscription();
+    if (sub) {
+        api('DELETE', '/api/push', { endpoint: sub.endpoint }).catch(() => { /* oubliée au bout de 12 h */ });
+        try { await sub.unsubscribe(); } catch { /* déjà abandonnée */ }
+    }
+    return renderPush();
+}
+
+// Toutes les 5 min en mode medic, appli ouverte : secteurs à jour, et 12 h de plus
+async function refreshPush() {
+    if (!state.medicCode || Date.now() - pushRegAt < 5 * MIN) return;
+    const sub = await pushSubscription();
+    if (sub) registerPush(sub).catch(() => { /* réessayé au prochain tour */ });
+}
+
+async function renderPush(msg) {
+    const sub = await pushSubscription();
+    const on = Boolean(state.medicCode);
+    // Visible en mode medic, ou tant que des alertes restent actives (pour pouvoir les couper)
+    $('#medicPushRow').classList.toggle('hidden', !on && !sub);
+    $('#medicPushBtn').classList.toggle('hidden', !sub && (!on || !pushSupported()));
+    $('#medicPushLabel').textContent = sub ? 'Couper les alertes en poche' : 'M\'alerter téléphone en poche';
+    const h = Math.round((state.config.pushTtlMin || 720) / 60);
+    $('#medicPushHint').textContent = msg || (sub
+        ? `Activées : une notification vide à chaque demande d'aide près de toi, même écran éteint, jusqu'à ${h} h après ta dernière ouverture de Vigie.`
+        : !pushSupported()
+            ? (window.isSecureContext ? 'Ton navigateur ne permet pas les alertes en poche. Sur iPhone, installe d\'abord Vigie sur l\'écran d\'accueil.' : 'Les alertes en poche ont besoin d\'une connexion sécurisée (HTTPS).')
+            : `Une notification vide à chaque demande d'aide près de toi, même écran éteint, pendant ${h} h. Elle passe par Google (Android) ou Apple (iPhone) : ils voient qu'une alerte de Vigie arrive sur ton téléphone, et quand, jamais où ni pourquoi.`);
 }
 
 function openHelpDetail(id) {
@@ -1633,15 +1756,16 @@ function drawQr(canvas, text) {
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (m[y][x]) ctx.fillRect((x + quiet) * scale, (y + quiet) * scale, scale, scale);
 }
 
-async function copyCode() {
-    const code = cellToCode(state.cell);
+const copyCode = () => copyFrom($('#cellCodeText'), 'Code copié');
+
+// Copie le texte d'un élément affiché (code de cellule, code ou empreinte de collectif)
+async function copyFrom(el, done) {
     try {
         if (!navigator.clipboard?.writeText) throw new Error('indisponible');
-        await navigator.clipboard.writeText(code);
-        toast('Code copié');
+        await navigator.clipboard.writeText(el.textContent);
+        toast(done);
     } catch {
         // Repli : on sélectionne le texte, à copier à la main
-        const el = $('#cellCodeText');
         const range = document.createRange();
         range.selectNodeContents(el);
         const sel = getSelection();
@@ -2354,6 +2478,9 @@ async function wipeAll() {
     // page se recharge) ; sinon elle y restait 45 min, avec son type et son point
     const h = state.myHelp;
     if (h) api('DELETE', `/api/help/${h.id}`, null, { 'X-Owner-Token': h.token }).catch(() => { /* elle expirera seule */ });
+    // Les alertes en poche aussi : le serveur oublie l'adresse d'alerte de ce téléphone
+    const sub = await pushSubscription();
+    if (sub) api('DELETE', '/api/push', { endpoint: sub.endpoint }).catch(() => { /* oubliée au bout de 12 h */ });
     wiping = true;
     try { localStorage.clear(); } catch { /* rien à effacer */ }
     try { sessionStorage.clear(); } catch { /* rien à effacer */ }
@@ -2426,6 +2553,7 @@ function sentLabel(method, url) {
     if (p.startsWith('/api/reports/') && method === 'DELETE') return 'Annulation de ton signalement';
     if (p === '/api/help' && method === 'POST') return 'Demande d\'aide';
     if (p === '/api/help') return 'Demandes d\'aide (mode medic)';
+    if (p === '/api/push') return method === 'POST' ? 'Alertes en poche : adresse d\'alerte de ton téléphone et secteurs (mode medic)' : 'Alertes en poche coupées';
     if (p.startsWith('/api/help/')) return 'Suivi de ta demande d\'aide';
     if (p.startsWith('/api/buddy/')) return method === 'POST' ? 'Binôme : message chiffré' : 'Binôme : relevé des messages chiffrés';
     if (p === '/api/cell/pair') return 'Code court : ta cellule confiée au serveur 12 h';
@@ -2685,10 +2813,25 @@ function bindUi() {
         watchPosition();
         openInstall();
     });
-    $('#medicForm').addEventListener('submit', (e) => {
+    $('#medicForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const code = $('#medicInput').value.trim();
-        if (code) startMedic(code);
+        const msg = code && await startMedic(code);
+        if (msg) $('#medicHint').textContent = msg;
+    });
+    $('#medicSheetBtn').addEventListener('click', openMedicSheet);
+    $('#medicPushBtn').addEventListener('click', async () => ((await pushSubscription()) ? disablePush() : enablePush()));
+    $('#medicBack').addEventListener('click', () => showMedicView('medicHome'));
+    $('#medicScanBtn').addEventListener('click', () => showMedicView('medicScanView'));
+    $('#medicShareBtn').addEventListener('click', () => showMedicView('medicShareView'));
+    $('#medicCreateBtn').addEventListener('click', () => showMedicView('medicCreateView'));
+    $('#medicNewCopy').addEventListener('click', () => copyFrom($('#medicNewCode'), 'Code copié'));
+    $('#medicPrintCopy').addEventListener('click', () => copyFrom($('#medicNewPrint'), 'Empreinte copiée'));
+    $('#medicCodeForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const code = $('#medicCodeInput').value.trim();
+        const msg = code && await startMedic(code);
+        if (msg) $('#medicScanMsg').textContent = msg;
     });
     $('#medicOff').addEventListener('click', () => {
         stopMedic();
