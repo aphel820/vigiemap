@@ -90,7 +90,7 @@ export const Config = {
     medicList: process.env.MEDIC_LIST ?? '/etc/vigie-medics.txt',
     // Alertes en poche (mode medic, si le medic les active) : le serveur garde l'adresse d'alerte du
     // téléphone en mémoire, jusqu'à 12 h après sa dernière ouverture de Vigie, et n'y envoie qu'une
-    // notification vide (« demande d'aide près de toi »), au plus une par minute, quelques secondes
+    // notification vide (« demande d'aide dans ta région »), au plus une par minute, quelques secondes
     // après la demande (le temps qu'une demande touchée par erreur soit annulée). Seuls les services de
     // notification des navigateurs sont contactés, jamais une autre adresse donnée par un téléphone.
     pushTtlMin: 720,
@@ -147,6 +147,10 @@ export const Config = {
     mapAttribution: '© contributeurs OpenStreetMap, Protomaps',
     tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     windRefreshMin: 10,
+    // Secteurs en relief (relief.json, `node scripts/relief.mjs`) : 9 points de relevé au lieu d'un, et
+    // Open-Meteo compte chaque point comme un appel ; relevés toutes les 15 min pour tenir le quota
+    windRefreshReliefMin: 15,
+    reliefPath: process.env.RELIEF_FILE || null,
 
     // Démo : faux signalements autour de la place de la République, et position simulée du téléphone
     demoCenter: [48.8675, 2.3637],

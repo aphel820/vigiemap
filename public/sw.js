@@ -26,6 +26,7 @@ const SHELL_FILES = [
     '/js/qr.js',
     '/js/pow.js',
     '/js/codes.js',
+    '/js/vent.js',
     '/vendor/leaflet/leaflet.js',
     '/vendor/leaflet/leaflet.css',
     '/vendor/protomaps-leaflet/protomaps-leaflet.js',
@@ -109,7 +110,8 @@ async function shell(e, url) {
 // Alerte en poche (mode medic) : l'envoi ne contient rien, la notification non plus (ni lieu, ni besoin).
 // Il faut ouvrir Vigie pour voir la demande. Une seule notification à la fois : la suivante la remplace.
 self.addEventListener('push', (e) => {
-    e.waitUntil(self.registration.showNotification('Vigie : demande d\'aide près de toi', {
+    // « Dans ta région » : l'inscription couvre les secteurs autour du medic, jusqu'à 50 km environ
+    e.waitUntil(self.registration.showNotification('Vigie : demande d\'aide dans ta région', {
         body: 'Ouvre Vigie pour la voir.',
         tag: 'vigie-aide',
         renotify: true,

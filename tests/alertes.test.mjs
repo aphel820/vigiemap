@@ -1,5 +1,8 @@
 import http from 'node:http';
-import { createPublicKey, verify } from 'node:crypto';
+import { createPublicKey, verify, randomBytes } from 'node:crypto';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 // Alertes en poche des medics : envoi vide et signé (VAPID), seulement vers les services de
 // notification autorisés, pas pour une demande annulée, au plus une par minute, abonnement mort oublié
@@ -13,7 +16,7 @@ const svc = http.createServer((req, res) => {
     req.on('data', (c) => { len += c.length; });
     req.on('end', () => {
         got.push({ path: req.url, method: req.method, headers: req.headers, len });
-        res.writeHead(req.url === '/mort' ? 410 : 201);
+        res.writeHead(req.url === '/mort' ? 410 : req.url === '/vieille-cle' ? 403 : 201);
         res.end();
     });
 });
@@ -25,7 +28,9 @@ process.env.KEY = 'nope';
 process.env.POW_BITS = '8';
 process.env.POW_BITS_URGENT = '6';
 process.env.MEDIC_CODE = 'code-medic-de-test-solide';
-process.env.MEDIC_LIST = '';
+const dir = mkdtempSync(path.join(tmpdir(), 'vigie-alertes-'));
+const LIST = path.join(dir, 'medics.txt');
+process.env.MEDIC_LIST = LIST;
 process.env.PUSH_HOSTS = '127.0.0.1';
 process.env.PUSH_INSECURE_TEST = '1';
 process.argv.push('--port=4412');
@@ -111,13 +116,41 @@ const before = got.length;
 await help(48.865, 2.355);
 await wait(500);
 ok(got.length === before, 'alertes coupées : plus rien n\'arrive');
+// 7. Le service refuse l'envoi (403 : inscrit avec une ancienne clé du serveur) : abonnement oublié
+ok((await subscribe(`${SVC}/vieille-cle`)).status === 200, 'abonné inscrit avec une clé que le service refuse');
+await help(48.865, 2.357);
+await wait(500);
+const avant403 = got.filter((g) => g.path === '/vieille-cle').length;
+await help(48.865, 2.358);
+await wait(500);
+ok(avant403 === 1 && got.filter((g) => g.path === '/vieille-cle').length === 1, 'refus 403 du service : abonnement oublié, plus d\'essai');
+
+// 8. Code de collectif retiré : ses alertes s'arrêtent aussitôt (téléphone saisi)
+const { b32encode, medicPrint } = await import(new URL('../public/js/codes.js', import.meta.url));
+const code = `${b32encode(randomBytes(14))}M`;
+writeFileSync(LIST, `${medicPrint(code)}\n`);
+await wait(1100);
+ok((await subscribe(`${SVC}/collectif`, { 'X-Medic-Code': code })).status === 200, 'inscription avec un code de collectif');
+await help(48.866, 2.359);
+await wait(500);
+ok(got.some((g) => g.path === '/collectif'), 'le collectif reçoit l\'alerte');
+writeFileSync(LIST, '# vide\n');
+await wait(1100);
+const avantRetrait = got.length;
+await help(48.867, 2.36);
+await wait(500);
+ok(got.slice(avantRetrait).every((g) => g.path !== '/collectif'), 'empreinte retirée : plus aucune alerte pour ce code');
+
+// 9. Expiration
 Config.pushTtlMin = 0.001; // environ 60 ms
 await subscribe(`${SVC}/abo2`);
 await wait(150);
-await help(48.866, 2.356);
+await help(48.868, 2.361);
 await wait(500);
 ok(!got.some((g) => g.path === '/abo2'), 'inscription expirée : oubliée, plus d\'alerte');
 
 svc.close();
+rmSync(dir, { recursive: true, force: true });
+await wait(300); // sous Windows, quitter au milieu de connexions qui se ferment fait planter Node
 console.log(fails ? `\n${fails} ÉCHEC(S)` : '\nTOUT PASSE');
 process.exit(fails ? 1 : 0);

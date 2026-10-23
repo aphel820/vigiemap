@@ -27,6 +27,7 @@ process.env.KEY = 'nope';
 process.env.POW_BITS = '8';
 process.env.POW_BITS_URGENT = '6';
 process.env.MEDIC_CODE = 'code-medic-de-test-solide';
+process.env.RELIEF_FILE = 'aucun-fichier'; // un seul point partout : le faux service météo répond pour un point
 process.argv.push('--port=4408');
 const { Config } = await import(new URL('../config.js', import.meta.url));
 await import(new URL('../server.js', import.meta.url));

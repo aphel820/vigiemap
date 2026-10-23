@@ -7,6 +7,7 @@ import { icon, TYPES, HELP_TYPES } from './icons.js';
 import { qrMatrix } from './qr.js';
 import { solveSync as powSolveInline } from './pow.js';
 import { b32encode, b32decode, cleanCode, medicPrint } from './codes.js';
+import { nearestWind, CALM_KMH } from './vent.js';
 import { FLAVORS } from '../vendor/protomaps-leaflet/flavors.js';
 
 const L = window.L;
@@ -597,6 +598,7 @@ function setPos(ll) {
     if (document.body.classList.contains('is-aiming') && !state.aimTouched) centerAimOnPos();
     refreshAlert();
     resubscribe(); // en marchant, on finit par changer de secteur
+    if (state.wind?.points) renderWind(); // en relief, le relevé le plus proche change avec la position
 }
 
 // GPS : c'est le premier poste de dépense de la batterie. Par défaut on se contente
@@ -1316,11 +1318,13 @@ async function medicLoop() {
 async function startMedic(raw) {
     const isCollective = typedBytes(raw, 'medic') !== null;
     const code = isCollective ? cleanCode(raw) : String(raw).trim();
-    if (typedBytes(code, 'cell') || typedBytes(code, 'buddy')) return 'C\'est un code de cellule ou de binôme, pas un code medic.';
     try {
         applyHelps(await api('GET', `/api/help?s=${wantedSectors()}`, null, { 'X-Medic-Code': code }));
     } catch (e) {
         if (e.status !== 403) return 'Pas de réseau, réessaie.';
+        // Seulement après le refus du serveur : le code du serveur (24 caractères hexadécimaux) peut
+        // ressembler par hasard à un code de cellule ou de binôme, et il doit quand même passer
+        if (typedBytes(code, 'cell') || typedBytes(code, 'buddy')) return 'C\'est un code de cellule ou de binôme, pas un code medic.';
         return isCollective
             ? 'Code refusé. S\'il vient d\'être créé, son empreinte n\'a peut-être pas encore été ajoutée.'
             : 'Code refusé. Vérifie-le auprès de ton collectif.';
@@ -1416,7 +1420,7 @@ function renderMedicCreate() {
     $('#medicContact').textContent = state.config.contact || 'l\'équipe de ce serveur Vigie';
 }
 
-// --- alertes en poche : une notification VIDE (« demande d'aide près de toi ») même écran éteint. Elle
+// --- alertes en poche : une notification VIDE (« demande d'aide dans ta région ») même écran éteint. Elle
 // passe par le service de notification du navigateur (Google, Apple…), qui voit qu'une alerte de Vigie
 // arrive sur ce téléphone, et quand, jamais où ni pourquoi. Le serveur oublie l'adresse d'alerte 12 h
 // après la dernière ouverture de Vigie.
@@ -1475,8 +1479,21 @@ async function disablePush() {
 // Toutes les 5 min en mode medic, appli ouverte : secteurs à jour, et 12 h de plus
 async function refreshPush() {
     if (!state.medicCode || Date.now() - pushRegAt < 5 * MIN) return;
-    const sub = await pushSubscription();
-    if (sub) registerPush(sub).catch(() => { /* réessayé au prochain tour */ });
+    pushRegAt = Date.now();
+    let sub = await pushSubscription();
+    if (!sub) return;
+    // Clé du serveur changée depuis l'inscription : l'ancien abonnement ne recevrait plus rien
+    const key = state.config.vapidKey;
+    if (key && b64u(sub.options?.applicationServerKey || new ArrayBuffer(0)) !== key) {
+        try {
+            await sub.unsubscribe();
+            const reg = await navigator.serviceWorker.getRegistration();
+            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(key) });
+        } catch {
+            return renderPush('Les alertes en poche se sont coupées : réactive-les.');
+        }
+    }
+    registerPush(sub).catch(() => { /* réessayé au prochain tour */ });
 }
 
 async function renderPush(msg) {
@@ -1488,10 +1505,10 @@ async function renderPush(msg) {
     $('#medicPushLabel').textContent = sub ? 'Couper les alertes en poche' : 'M\'alerter téléphone en poche';
     const h = Math.round((state.config.pushTtlMin || 720) / 60);
     $('#medicPushHint').textContent = msg || (sub
-        ? `Activées : une notification vide à chaque demande d'aide près de toi, même écran éteint, jusqu'à ${h} h après ta dernière ouverture de Vigie.`
+        ? `Activées : une notification vide à chaque demande d'aide dans ta région (jusqu'à 50 km environ), même écran éteint, jusqu'à ${h} h après ta dernière ouverture de Vigie.`
         : !pushSupported()
             ? (window.isSecureContext ? 'Ton navigateur ne permet pas les alertes en poche. Sur iPhone, installe d\'abord Vigie sur l\'écran d\'accueil.' : 'Les alertes en poche ont besoin d\'une connexion sécurisée (HTTPS).')
-            : `Une notification vide à chaque demande d'aide près de toi, même écran éteint, pendant ${h} h. Elle passe par Google (Android) ou Apple (iPhone) : ils voient qu'une alerte de Vigie arrive sur ton téléphone, et quand, jamais où ni pourquoi.`);
+            : `Une notification vide à chaque demande d'aide dans ta région (jusqu'à 50 km environ), même écran éteint, pendant ${h} h. Elle passe par Google (Android) ou Apple (iPhone) : ils voient qu'une alerte de Vigie arrive sur ton téléphone, et quand, jamais où ni pourquoi.`);
 }
 
 function openHelpDetail(id) {
@@ -1671,7 +1688,8 @@ async function joinByCode() {
     // Court : c'est un code court, résolu par le serveur
     if (cleaned.length > 0 && cleaned.length <= 12) {
         try {
-            const pow = await solvePow(`claim|${normCode(raw)}`);
+            // cleanCode : la même normalisation que le serveur, la preuve porte sur le code tel qu'il le lira
+            const pow = await solvePow(`claim|${cleanCode(raw)}`);
             const res = await api('POST', '/api/cell/claim', { pin: raw }, pow ? { 'X-Pow': pow } : {});
             if (!/^[a-f0-9]{8}$/.test(String(res?.id)) || !/^[a-f0-9]{20}$/.test(String(res?.key))) throw new Error('réponse inattendue');
             onJoined({ id: res.id, key: res.key });
@@ -1705,11 +1723,6 @@ async function showPin() {
     }
 }
 
-// Même normalisation que le serveur (confusions de saisie, tirets, minuscules) : la preuve de travail
-// porte sur le code tel que le serveur le lira
-const normCode = (s) => String(s || '').toUpperCase()
-    .replace(/I/g, '1').replace(/L/g, '1').replace(/O/g, '0').replace(/U/g, 'V')
-    .replace(/[^0-9A-Z]/g, '');
 
 function onJoined(cell) {
     stopScan();
@@ -2193,6 +2206,9 @@ async function loadWind() {
         const c = state.pos || (map ? [map.getCenter().lat, map.getCenter().lng] : state.config.center);
         const w = await api('GET', `/api/wind?s=${sectorKey(c[0], c[1])}`);
         state.wind = w && !w.unavailable ? w : null;
+        // Pas de vent pour l'instant (quota de la minute, service météo en panne) : on redemande dans une
+        // minute plutôt que dans 10 (le serveur, lui, ne rappelle le service météo qu'à son rythme)
+        if (!state.wind) windAt = Date.now() - 9 * MIN;
     } catch {
         // On garde la dernière valeur
     }
@@ -2200,15 +2216,26 @@ async function loadWind() {
 }
 
 function renderWind() {
-    const w = state.wind;
+    // En relief, le serveur envoie plusieurs relevés du secteur : on prend le plus proche d'ici
+    const here = state.pos || (map ? [map.getCenter().lat, map.getCenter().lng] : null);
+    const w = nearestWind(state.wind, here);
     $('#windBtn').classList.toggle('hidden', !w);
     $('#gasWind').classList.toggle('hidden', !w);
     if (!w) return;
     // Une seule flèche, sur l'écran « Gazé·e » : où marcher pour sortir du nuage, face au vent (étape 1),
     // donc d'où vient le vent. Le bandeau du haut n'en a plus : sa flèche (où va le gaz) pointait à l'opposé.
-    rotateArrow($('#gasWindArrow'), w.fromDeg);
+    // Vent faible : sa direction ne veut plus rien dire, une flèche enverrait au hasard, peut-être dans le gaz
+    const calm = w.speedKmh < CALM_KMH;
+    $('#gasWind').classList.toggle('is-calme', calm);
+    if (!calm) rotateArrow($('#gasWindArrow'), w.fromDeg);
     $('#windText').textContent = `${w.speedKmh} km/h`;
-    $('#gasWindText').textContent = `${cap(VERS[sector(w.fromDeg)])}, face au vent (${w.speedKmh} km/h)`;
+    $('#gasWindTitle').textContent = calm ? 'Vent faible : pas de direction fiable' : 'Pour sortir du gaz, marche par là';
+    $('#gasWindText').textContent = calm
+        ? `${w.speedKmh} km/h. Regarde où part la fumée.`
+        : `${cap(VERS[sector(w.fromDeg)])}, face au vent (${w.speedKmh} km/h)`;
+    $('#gasWindNote').textContent = calm
+        ? 'Vent de la région, pas de ta rue. Météo : Open-Meteo.com (licence CC BY 4.0)'
+        : 'Si la police est de ce côté, sors plutôt par le côté du nuage. Vent de la région, pas de ta rue : regarde aussi où part la fumée. Météo : Open-Meteo.com (licence CC BY 4.0)';
     $('#windBtn').setAttribute('aria-label', `Vent ${w.speedKmh} km/h. Ouvrir les gestes en cas de gaz.`);
 }
 

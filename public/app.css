@@ -1021,6 +1021,8 @@ body.has-sheet .toast { bottom: calc(var(--safe-b) + 12px); }
 .windbox__arrow .ico { font-size: 44px; }
 /* Sans boussole, la flèche suit la carte (nord en haut) : un « N » au-dessus le dit, hors rotation */
 .windbox__compass { position: relative; flex: none; }
+/* Vent faible : pas de flèche, rien qui envoie dans une direction au hasard */
+.windbox.is-calme .windbox__compass { display: none; }
 .windbox__compass.is-nord::before {
     content: 'N';
     position: absolute;

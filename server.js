@@ -4,7 +4,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
-import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual, createHash, createHmac, createECDH, createPrivateKey, sign } from 'node:crypto';
 import path from 'node:path';
@@ -15,6 +15,7 @@ import { pipeline } from 'node:stream';
 import { Config } from './config.js';
 import { openPmtiles } from './pmtiles.mjs';
 import { cleanCode, medicPrint, MEDIC_CODE_RE, PRINT_RE } from './public/js/codes.js';
+import { tile2lat, tile2lng, windPoints } from './public/js/vent.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const VIGIE_VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -98,23 +99,18 @@ const medicCode = Config.demo ? 'medic-demo' : Config.medicCode;
 
 // Codes des collectifs de medics : le serveur ne connaît que leurs empreintes (voir public/js/codes.js),
 // sans nom, une par ligne dans Config.medicList. Saisi, il ne révèle ni les codes ni les collectifs.
-// La liste est relue quand le fichier change (au plus une fois par seconde) : ajouter ou couper un
-// collectif ne redémarre rien, donc n'efface rien. Fichier absent ou illisible : aucun code de collectif.
+// La liste (quelques lignes) est relue au plus une fois par seconde : ajouter ou couper un collectif
+// ne redémarre rien, donc n'efface rien. Fichier absent ou illisible : aucun code de collectif.
 let medicPrints = new Set();
-const medicListSeen = { at: 0, mtime: -1 };
+let medicListAt = 0;
 function currentMedicPrints() {
-    if (!Config.medicList || now() - medicListSeen.at < 1000) return medicPrints;
-    medicListSeen.at = now();
+    if (!Config.medicList || now() - medicListAt < 1000) return medicPrints;
+    medicListAt = now();
     try {
-        const { mtimeMs } = statSync(Config.medicList);
-        if (mtimeMs !== medicListSeen.mtime) {
-            medicListSeen.mtime = mtimeMs;
-            medicPrints = new Set(readFileSync(Config.medicList, 'utf8').split('\n')
-                .map((l) => cleanCode(l.replace(/#.*/, ''))).filter((p) => PRINT_RE.test(p)));
-        }
+        medicPrints = new Set(readFileSync(Config.medicList, 'utf8').split('\n')
+            .map((l) => cleanCode(l.replace(/#.*/, ''))).filter((p) => PRINT_RE.test(p)));
     } catch {
         medicPrints = new Set();
-        medicListSeen.mtime = -1;
     }
     return medicPrints;
 }
@@ -294,11 +290,6 @@ function newCode(taken) {
     do { c = Array.from({ length: 8 }, () => CODE_ALPH[randomBytes(1)[0] % 32]).join(''); } while (taken.has(c));
     return c;
 }
-// Tolère les confusions de saisie (I et L -> 1, O -> 0, U -> V), les tirets et les minuscules
-const normCode = (s) => String(s || '').toUpperCase()
-    .replace(/I/g, '1').replace(/L/g, '1').replace(/O/g, '0').replace(/U/g, 'V')
-    .replace(/[^0-9A-Z]/g, '');
-
 async function pairCell(req, res) {
     const b = await readJson(req);
     const id = String(b?.id || '');
@@ -318,7 +309,8 @@ async function pairCell(req, res) {
 
 async function claimCell(req, res) {
     const b = await readJson(req);
-    const pin = normCode(b?.pin);
+    // Tolère les confusions de saisie (I et L -> 1, O -> 0, U -> V), les tirets et les minuscules
+    const pin = cleanCode(b?.pin);
     if (!powOk(`claim|${pin}`, req.headers['x-pow'])) return powRefused(res);
     const e = pairings.get(pin);
     if (!e || now() - e.at > PAIR_TTL) { if (e) pairings.delete(pin); return json(res, 404, { error: 'Code court inconnu ou expiré.' }); }
@@ -579,10 +571,17 @@ function publicHelp(h) {
 // Le code du serveur (MEDIC_CODE), ou celui d'un collectif dont l'empreinte est dans la liste. Le
 // serveur ne note jamais quel code a vu ou pris quelle demande.
 function isMedic(req) {
+    return medicOf(req) !== null;
+}
+// Quel code a parlé : 'serveur' pour MEDIC_CODE, l'empreinte pour un code de collectif, null sinon.
+// Seules les alertes en poche le gardent (en mémoire), pour s'arrêter dès qu'une empreinte est retirée.
+function medicOf(req) {
     const given = req.headers['x-medic-code'];
-    if (sameSecret(given, medicCode)) return true;
+    if (sameSecret(given, medicCode)) return 'serveur';
     const code = cleanCode(given);
-    return MEDIC_CODE_RE.test(code) && currentMedicPrints().has(medicPrint(code));
+    if (!MEDIC_CODE_RE.test(code)) return null;
+    const print = medicPrint(code);
+    return currentMedicPrints().has(print) ? print : null;
 }
 const isOwner = (req, h) => sameSecret(req.headers['x-owner-token'], h.ownerToken);
 
@@ -616,7 +615,10 @@ async function createHelp(req, res) {
 // Vigie pour voir. Le service de notification (Google, Apple…) voit seulement que ce téléphone reçoit
 // une alerte de Vigie, et quand. Rien n'est écrit : l'adresse est oubliée 12 h après la dernière
 // ouverture de Vigie, ou dès que le medic coupe les alertes.
-const pushSubs = new Map(); // adresse d'alerte -> { sectors, until, lastSent }
+const pushSubs = new Map(); // adresse d'alerte -> { sectors, until, lastSent, by }
+// by : le code qui l'a inscrite (« serveur » ou empreinte). Une empreinte retirée de la liste coupe aussi
+// ses alertes : un téléphone saisi ne reçoit plus rien dès que son collectif a changé de code.
+const pushStillAllowed = (s) => s.by === 'serveur' || currentMedicPrints().has(s.by);
 
 // Clé VAPID : elle signe les envois, pour que seul ce serveur puisse alerter ses abonnés. Tirée du code
 // du serveur : la même à chaque redémarrage, sans fichier à écrire (le service n'écrit nulle part).
@@ -660,8 +662,9 @@ function sendPush(endpoint) {
         headers: { TTL: '600', Urgency: 'high', 'Content-Length': '0', Authorization: vapidHeader(u) },
     }, (r) => {
         r.resume();
-        // Abonnement mort (appli désinstallée, autorisation retirée) : oublié aussitôt
-        if (r.statusCode === 404 || r.statusCode === 410) pushSubs.delete(endpoint);
+        // Abonnement mort (appli désinstallée, autorisation retirée) ou refusé par le service (inscrit avec
+        // une ancienne clé du serveur) : oublié aussitôt, il ne servirait plus jamais
+        if ([401, 403, 404, 410].includes(r.statusCode)) pushSubs.delete(endpoint);
     });
     req.on('timeout', () => req.destroy());
     req.on('error', () => { /* service injoignable : l'alerte est perdue, la demande reste visible dans l'appli */ });
@@ -671,7 +674,7 @@ function sendPush(endpoint) {
 function notifyMedics(sector) {
     const t = now();
     for (const [endpoint, s] of pushSubs) {
-        if (t > s.until) { pushSubs.delete(endpoint); continue; }
+        if (t > s.until || !pushStillAllowed(s)) { pushSubs.delete(endpoint); continue; }
         if (!s.sectors.has(sector) || t - s.lastSent < Config.pushMinGapMs) continue;
         s.lastSent = t;
         sendPush(endpoint);
@@ -679,14 +682,15 @@ function notifyMedics(sector) {
 }
 
 async function pushSubscribe(req, res, sectors) {
-    if (!isMedic(req)) return json(res, 403, { error: 'Réservé aux medics.' });
+    const by = medicOf(req);
+    if (!by) return json(res, 403, { error: 'Réservé aux medics.' });
     if (!sectors?.size) return json(res, 400, { error: 'Secteurs manquants.' });
     const b = await readJson(req, 1500);
     if (!pushUrl(b?.endpoint)) return json(res, 400, { error: 'Adresse d\'alerte refusée.' });
     const prev = pushSubs.get(b.endpoint);
     // Au plafond, on refuse les nouveaux : un flood ne fait jamais perdre ses alertes à un vrai medic
     if (!prev && pushSubs.size >= Config.maxPushSubs) return json(res, 503, { error: 'Alertes saturées : garde Vigie ouverte.' });
-    pushSubs.set(b.endpoint, { sectors, until: now() + Config.pushTtlMin * MIN, lastSent: prev?.lastSent || 0 });
+    pushSubs.set(b.endpoint, { sectors, until: now() + Config.pushTtlMin * MIN, lastSent: prev?.lastSent || 0, by });
     return json(res, 200, { ttlMin: Config.pushTtlMin });
 }
 
@@ -742,16 +746,28 @@ function buddyList(gid) {
 
 // ---------------------------------------------------------------- vent (pour savoir où part le gaz)
 
-// Un relevé par secteur, au centre du secteur : le service météo ne voit qu'une région de 50 km
+// Relevé par secteur : au centre en plaine ; en relief, sur 9 points (public/js/vent.js), que le
+// serveur envoie tous, et le téléphone affiche le plus proche de lui. Le service météo ne voit
+// jamais qu'une région de 50 km.
 const winds = new Map(); // secteur -> { data, at }
 // Un relevé de plus de 30 min n'est plus le vent d'en ce moment : mieux vaut rien qu'une flèche fausse
 const WIND_MAX_AGE = 30 * MIN;
 const freshWind = (w) => (w?.data && now() - w.data.at < WIND_MAX_AGE ? w.data : null);
 
+// Secteurs en relief : liste fixe calculée une fois (le relief ne bouge pas), jamais écrite par le
+// serveur. Absente ou illisible : un seul point partout, comme avant.
+const RELIEF = (() => {
+    try {
+        const j = JSON.parse(readFileSync(Config.reliefPath || path.join(ROOT, 'relief.json'), 'utf8'));
+        return new Set((Array.isArray(j.secteurs) ? j.secteurs : []).map(normSector).filter(Boolean));
+    } catch {
+        return new Set();
+    }
+})();
+
 // Seulement pour un secteur qui touche une zone couverte, et au plus 60 appels sortants par minute :
-// personne ne peut faire griller le quota du service météo en demandant des secteurs au hasard
-const tile2lng = (x, n) => (x / n) * 360 - 180;
-const tile2lat = (y, n) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI;
+// personne ne peut faire griller le quota du service météo en demandant des secteurs au hasard.
+// Open-Meteo compte chaque point demandé comme un appel : un secteur en relief en coûte 9.
 let windCalls = { minute: 0, n: 0, day: 0, nDay: 0 };
 
 async function getWind(sector) {
@@ -762,16 +778,19 @@ async function getWind(sector) {
     const [w0, e0, n0, s0] = [tile2lng(sx, n), tile2lng(sx + 1, n), tile2lat(sy, n), tile2lat(sy + 1, n)];
     if (!Config.zones.some(([, [w, s, e, nn]]) => e0 >= w && w0 <= e && n0 >= s && s0 <= nn)) return null;
     let w = winds.get(sector);
-    if (w && now() - w.at < Config.windRefreshMin * MIN) return freshWind(w);
+    const relief = RELIEF.has(sector);
+    const refreshMin = relief ? Config.windRefreshReliefMin : Config.windRefreshMin;
+    if (w && now() - w.at < refreshMin * MIN) return freshWind(w);
+    const pts = windPoints(sx, sy, Config.sectorZoom, relief);
     // 60 appels sortants par minute, et 8 000 par jour : sous le quota gratuit d'Open-Meteo (environ 10 000),
     // sinon il refuserait le serveur jusqu'au lendemain et plus personne n'aurait le vent
     const minute = Math.floor(now() / MIN);
     const day = Math.floor(now() / 86_400_000);
     if (windCalls.minute !== minute) windCalls = { ...windCalls, minute, n: 0 };
     if (windCalls.day !== day) windCalls = { ...windCalls, day, nDay: 0 };
-    if (windCalls.n >= 60 || windCalls.nDay >= 8000) return freshWind(w);
-    windCalls.n++;
-    windCalls.nDay++;
+    if (windCalls.n + pts.length > 60 || windCalls.nDay + pts.length > 8000) return freshWind(w);
+    windCalls.n += pts.length;
+    windCalls.nDay += pts.length;
     if (!w) {
         if (winds.size >= 2000) winds.delete(winds.keys().next().value);
         w = { data: null, at: 0 };
@@ -779,20 +798,29 @@ async function getWind(sector) {
     }
     w.at = now();
     try {
-        const lng = tile2lng(sx + 0.5, n);
-        const lat = tile2lat(sy + 0.5, n);
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}`
-            + '&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh';
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${pts.map((p) => p[0].toFixed(2)).join(',')}`
+            + `&longitude=${pts.map((p) => p[1].toFixed(2)).join(',')}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh`;
         const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
         const j = await r.json();
-        const d = j?.current?.wind_direction_10m;
-        const v = j?.current?.wind_speed_10m;
-        if (!Number.isFinite(d) || !Number.isFinite(v)) throw new Error('réponse inattendue');
-        w.data = { fromDeg: d, speedKmh: Math.round(v), at: now() };
+        // Un point : un objet ; plusieurs : une liste, dans l'ordre demandé
+        const list = Array.isArray(j) ? j : [j];
+        if (list.length !== pts.length) throw new Error('réponse inattendue');
+        const points = list.map((x, i) => ({ lat: pts[i][0], lng: pts[i][1], fromDeg: x?.current?.wind_direction_10m, speedKmh: x?.current?.wind_speed_10m }))
+            .filter((p) => Number.isFinite(p.fromDeg) && Number.isFinite(p.speedKmh))
+            .map((p) => ({ ...p, speedKmh: Math.round(p.speedKmh) }));
+        // Le centre (au milieu de la grille) sert aux téléphones qui ne savent pas choisir ; s'il est
+        // illisible, le point valable le plus proche du centre le remplace (les autres restent utiles)
+        const [mlat, mlng] = pts[Math.floor(pts.length / 2)];
+        const center = points.reduce((best, p) => {
+            const d = (p.lat - mlat) ** 2 + (p.lng - mlng) ** 2;
+            return !best || d < best.d ? { p, d } : best;
+        }, null)?.p;
+        if (!center) throw new Error('réponse inattendue');
+        w.data = { fromDeg: center.fromDeg, speedKmh: center.speedKmh, at: now(), ...(relief ? { points } : {}) };
     } catch {
         // Raté (réseau, service en panne) : on garde la dernière valeur, et on réessaie dans une minute
         // au lieu de priver tout le secteur de vent pendant 10 min
-        w.at = now() - (Config.windRefreshMin - 1) * MIN;
+        w.at = now() - (refreshMin - 1) * MIN;
     }
     return freshWind(w);
 }
@@ -1215,7 +1243,7 @@ setInterval(() => {
     const nb = Math.floor(t / Config.powWindowMs);
     for (const [k, bk] of powSeen) if (bk < nb - 1) powSeen.delete(k);
     for (const [pin, v] of pairings) if (t - v.at > PAIR_TTL) pairings.delete(pin);
-    for (const [endpoint, s] of pushSubs) if (t > s.until) pushSubs.delete(endpoint);
+    for (const [endpoint, s] of pushSubs) if (t > s.until || !pushStillAllowed(s)) pushSubs.delete(endpoint);
     // Vent : un secteur que personne n'a demandé depuis 30 min est oublié (sinon la liste dirait où et
     // quand Vigie a servi, jusqu'au redémarrage)
     for (const [sec, w] of winds) if (t - w.at > WIND_MAX_AGE) winds.delete(sec);

@@ -433,7 +433,7 @@
                 <li>Un code court de cellule : la clé de la cellule, <span data-cfg="pairTtlH">12</span> h, seulement si tu en crées un. Pendant ce temps, toute personne qui a le code peut entrer dans la cellule.</li>
                 <li>Où tu es, à peu près : la carte s'ouvre sur toi, donc les morceaux de carte demandés montrent la zone affichée (environ 1 à 2 km), et la connexion temps réel suit les secteurs d'environ 50 km autour de ta position. Le serveur n'en note rien ; sa mémoire garde seulement, pour aller vite, les grandes régions de carte lues récemment.</li>
                 <li>Tout est en mémoire : aucun journal des requêtes, aucune adresse IP, et un redémarrage efface tout.</li>
-                <li>Le vent : le serveur demande la météo du centre de ton secteur (environ 50 km) au service Open-Meteo, au plus toutes les <span data-cfg="windRefreshMin">10</span> minutes. Open-Meteo voit le serveur Vigie, jamais ton téléphone.</li>
+                <li>Le vent : le serveur demande la météo de ton secteur (environ 50 km) au service Open-Meteo, au plus toutes les <span data-cfg="windRefreshMin">10</span> minutes : au centre en plaine, sur 9 points en montagne, où ton téléphone affiche le plus proche de toi sans le dire au serveur. Open-Meteo voit le serveur Vigie, jamais ton téléphone.</li>
             </ul>
 
             <h3 class="row__label">Ce que voit le réseau</h3>
@@ -573,9 +573,9 @@
         <div id="gasWind" class="windbox hidden">
             <span class="windbox__compass"><span id="gasWindArrow" class="windbox__arrow arrow"></span></span>
             <span>
-                <strong>Pour sortir du gaz, marche par là</strong>
+                <strong id="gasWindTitle">Pour sortir du gaz, marche par là</strong>
                 <span id="gasWindText"></span>
-                <span class="windbox__credit">Si la police est de ce côté, sors plutôt par le côté du nuage. Vent de la région, pas de ta rue : regarde aussi où part la fumée. Météo : Open-Meteo.com (licence CC BY 4.0)</span>
+                <span id="gasWindNote" class="windbox__credit">Si la police est de ce côté, sors plutôt par le côté du nuage. Vent de la région, pas de ta rue : regarde aussi où part la fumée. Météo : Open-Meteo.com (licence CC BY 4.0)</span>
             </span>
         </div>
         <ol class="steps">

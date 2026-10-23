@@ -32,10 +32,13 @@ puis un correctif publié le plus vite possible ; tu seras remercié·e si tu le
 - Les codes medic : chaque collectif tire le sien au hasard sur un téléphone (112 bits) et ne
   transmet que son empreinte (SHA-256 tronquée), qui ne permet pas de retrouver le code. Le
   serveur ne garde que ces empreintes, sans nom ni date, et ne note pas quel code a vu ou pris
-  quelle demande. Un code se coupe seul, sans toucher aux autres collectifs.
+  quelle demande. Un code se coupe seul, sans toucher aux autres collectifs, et ses alertes en
+  poche s'arrêtent avec lui (le serveur garde en mémoire, avec chaque adresse d'alerte, l'empreinte
+  du code qui l'a inscrite, et rien d'autre).
 - Le téléphone ne parle qu'au serveur Vigie : aucun service tiers, aucun CDN. Le serveur,
-  lui, demande la météo à Open-Meteo pour le centre d'un secteur (environ 50 km), au plus
-  toutes les 10 minutes : Open-Meteo voit le serveur, jamais un téléphone. Seule autre sortie,
+  lui, demande la météo à Open-Meteo pour un secteur (environ 50 km), au plus toutes les
+  10 minutes : son centre en plaine, 9 points en relief (le téléphone affiche le plus proche de
+  lui, sans le dire au serveur). Open-Meteo voit le serveur, jamais un téléphone. Seule autre sortie,
   pour les medics qui activent les alertes en poche : le serveur envoie une alerte vide (ni lieu,
   ni besoin) au service de notification de leur navigateur, et à aucune autre adresse.
 

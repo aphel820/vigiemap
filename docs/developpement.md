@@ -91,6 +91,8 @@ l'avertissement, restent des alternatives.
 - `public/js/qr.js` : générateur de QR maison (cellule, binôme, adresse de Vigie)
 - `public/js/pow.js` : SHA-256 maison + preuve de travail anti-spam (module et worker)
 - `public/js/codes.js` : codes à partager (base32) et empreinte d'un code de collectif de medics, chargé aussi par le serveur
+- `public/js/vent.js` : points de relevé du vent d'un secteur et choix du plus proche, chargé aussi par le serveur
+- `relief.json`, `scripts/relief.mjs` : secteurs en relief, où le vent est relevé sur 9 points (à relancer seulement si les zones changent)
 - `public/sw.js` : hors ligne (coque et tuiles en cache, API jamais en cache)
 - `deploiement/envoyer.sh`, `deploiement/installer.sh` : mise en ligne en une commande (envoi par Tor, installation complète sur Debian 13)
 - `deploiement/Caddyfile`, `deploiement/caddy-memoire.conf`, `deploiement/vigie.service` : mise en ligne (HTTPS sans journal, mémoire jamais sur disque, service système)
